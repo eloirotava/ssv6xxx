@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/net/wireless/ssv,ssv6xxx.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: iComm (South Silicon Valley) SSV6xxx SDIO wireless LAN
+
+maintainers:
+  - Eloi Rotava <eloi@rotava.com>
+
+description:
+  The SSV6051, also sold as SSV6030, is a 2.4 GHz 802.11b/g/n chip; the
+  SSV6256 adds 5 GHz and HT40.  Both have an SDIO interface and answer
+  to the same SDIO identity, so the node says which one is on the
+  board.  It describes SDIO function 1 and is a child of the MMC host.
+  All properties are optional; without them the driver assumes a 24 MHz
+  crystal, the internal LDO and the default transmit power.  The bus
+  clock is the one negotiated by the MMC core, lowered to 25 MHz only
+  while the chip is brought up; limit it with the host's max-frequency
+  if needed.
+
+allOf:
+  - $ref: ieee80211.yaml#
+
+properties:
+  compatible:
+    enum:
+      - ssv,ssv6051
+      - ssv,ssv6256
+
+  reg:
+    description: SDIO function number.
+    const: 1
+
+  ssv,xtal-hz:
+    description: Frequency of the crystal on the module.
+    enum: [24000000, 26000000, 40000000]
+    default: 24000000
+
+  ssv,dcdc:
+    type: boolean
+    description:
+      The chip is supplied through its DC-DC converter instead of the
+      internal LDO.  SSV6051 only.
+
+  ssv,tx-gain-level:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Transmit power level, from 1 (highest) to 14 (lowest).  Without it
+      the chip default is used.  SSV6051 only.
+    minimum: 1
+    maximum: 14
+
+  local-mac-address: true
+  mac-address: true
+
+required:
+  - compatible
+  - reg
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    mmc {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        wifi@1 {
+            compatible = "ssv,ssv6051";
+            reg = <1>;
+            ssv,tx-gain-level = <14>;
+        };
+    };
+  - |
+    mmc {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        wifi@1 {
+            compatible = "ssv,ssv6256";
+            reg = <1>;
+            local-mac-address = [00 11 22 33 44 55];
+        };
+    };

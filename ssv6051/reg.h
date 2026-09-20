@@ -1,0 +1,182 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/*
+ * SSV6051 register map: only what the driver uses.
+ *
+ * From the vendor driver:
+ * Copyright (c) 2015 South Silicon Valley Microelectronics Inc.
+ * Copyright (c) 2015 iComm Corporation
+ */
+#ifndef SSV6051_REG_H
+#define SSV6051_REG_H
+
+/* Register blocks */
+#define SYS_REG_BASE				0xc0000000
+#define GPIO_REG_BASE				0xc0000300
+#define SPI_REG_BASE				0xc0000a00
+#define INT_REG_BASE				0xc0000e00
+#define CSR_PMU_BASE				0xc0001d00
+#define HCI_REG_BASE				0xc1000000
+#define MRX_REG_BASE				0xc6000000
+#define MT_REG_CSR_BASE				0xc6002000
+#define TXQ0_MT_Q_REG_CSR_BASE			0xc6002100
+#define TXQ4_MT_Q_REG_CSR_BASE			0xc6002500
+#define HIF_INFO_BASE				0xca000000
+#define PHY_RATE_INFO_BASE			0xca000200
+#define MAC_GLB_SET_BASE			0xca000300
+#define MB_REG_BASE				0xcd000000
+#define ID_MNG_REG_BASE				0xcd010000
+#define CSR_PHY_BASE				0xce000000
+#define CSR_RF_BASE				0xce010000
+#define MMU_REG_BASE				0xcf000000
+#define MIB_REG_BASE				0xca000800
+
+/* Registers */
+#define ADR_BRG_SW_RST				(SYS_REG_BASE + 0x0)
+#define ADR_BOOT				(SYS_REG_BASE + 0x4)
+#define ADR_CLOCK_SELECTION			(SYS_REG_BASE + 0x18)
+#define ADR_PLATFORM_CLOCK_ENABLE		(SYS_REG_BASE + 0x1c)
+#define ADR_PAD53				(GPIO_REG_BASE + 0x88)
+#define ADR_PAD54				(GPIO_REG_BASE + 0x8c)
+#define ADR_PIN_SEL_0				(GPIO_REG_BASE + 0xcc)
+#define ADR_TX_SEG				(SPI_REG_BASE + 0x10)
+#define ADR_SDIO_MASK				(INT_REG_BASE + 0x3c)
+#define ADR_PMU_2				(CSR_PMU_BASE + 0x8)
+#define ADR_CONTROL				(HCI_REG_BASE + 0x0)
+#define ADR_HCI_TX_RX_INFO_SIZE			(HCI_REG_BASE + 0x30)
+#define ADR_TX_ETHER_TYPE_0			(HCI_REG_BASE + 0x50)
+#define ADR_TX_ETHER_TYPE_1			(HCI_REG_BASE + 0x54)
+#define ADR_RX_ETHER_TYPE_0			(HCI_REG_BASE + 0x60)
+#define ADR_RX_ETHER_TYPE_1			(HCI_REG_BASE + 0x64)
+#define ADR_MRX_FLT_TB0				(MRX_REG_BASE + 0x70)
+#define ADR_MRX_FLT_EN0				(MRX_REG_BASE + 0xb0)
+#define ADR_RX_FLOW_DATA			(MRX_REG_BASE + 0xe0)
+#define ADR_RX_FLOW_MNG				(MRX_REG_BASE + 0xe4)
+#define ADR_RX_FLOW_CTRL			(MRX_REG_BASE + 0xe8)
+#define ADR_RX_TIME_STAMP_CFG			(MRX_REG_BASE + 0xec)
+#define ADR_BA_CTRL				(MRX_REG_BASE + 0x100)
+#define ADR_BA_TA_0				(MRX_REG_BASE + 0x104)
+#define ADR_BA_TA_1				(MRX_REG_BASE + 0x108)
+#define ADR_BA_TID				(MRX_REG_BASE + 0x10c)
+#define ADR_BA_ST_SEQ				(MRX_REG_BASE + 0x110)
+#define ADR_BA_SB0				(MRX_REG_BASE + 0x114)
+#define ADR_BA_SB1				(MRX_REG_BASE + 0x118)
+#define ADR_MRX_WATCH_DOG			(MRX_REG_BASE + 0x11c)
+#define ADR_TRAP_HW_ID				(MRX_REG_BASE + 0x134)
+#define ADR_WSID0_TID0_RX_SEQ			(MRX_REG_BASE + 0x140)
+#define ADR_WSID1_TID0_RX_SEQ			(MRX_REG_BASE + 0x170)
+#define ADR_MTX_MISC_EN				(MT_REG_CSR_BASE + 0x8)
+#define ADR_MTX_BCN_EN_MISC			(MT_REG_CSR_BASE + 0xa8)
+#define ADR_MTX_BCN_MISC			(MT_REG_CSR_BASE + 0xac)
+#define ADR_MTX_BCN_PRD				(MT_REG_CSR_BASE + 0xb0)
+#define ADR_MTX_BCN_CFG0			(MT_REG_CSR_BASE + 0xbc)
+#define ADR_MTX_BCN_CFG1			(MT_REG_CSR_BASE + 0xc0)
+#define ADR_MTX_DUR_IFS				(MT_REG_CSR_BASE + 0xe4)
+#define ADR_MTX_DUR_SIFS_G			(MT_REG_CSR_BASE + 0xe8)
+#define ADR_MTX_MIB_WSID0			(MT_REG_CSR_BASE + 0xf4)
+#define ADR_MTX_MIB_WSID1			(MT_REG_CSR_BASE + 0xf8)
+#define ADR_TXQ0_MTX_Q_AIFSN			(TXQ0_MT_Q_REG_CSR_BASE + 0x4)
+#define ADR_TXQ4_MTX_Q_AIFSN			(TXQ4_MT_Q_REG_CSR_BASE + 0x4)
+#define ADR_WSID0				(HIF_INFO_BASE + 0x0)
+#define ADR_WSID1				(HIF_INFO_BASE + 0x50)
+#define ADR_INFO0				(PHY_RATE_INFO_BASE + 0x0)
+#define ADR_INFO_RATE_OFFSET			(PHY_RATE_INFO_BASE + 0xa0)
+#define ADR_INFO_IDX_ADDR			(PHY_RATE_INFO_BASE + 0xa4)
+#define ADR_INFO_LEN_ADDR			(PHY_RATE_INFO_BASE + 0xa8)
+#define ADR_GLBLE_SET				(MAC_GLB_SET_BASE + 0x1c)
+#define ADR_REASON_TRAP0			(MAC_GLB_SET_BASE + 0x20)
+#define ADR_REASON_TRAP1			(MAC_GLB_SET_BASE + 0x24)
+#define ADR_BSSID_0				(MAC_GLB_SET_BASE + 0x28)
+#define ADR_BSSID_1				(MAC_GLB_SET_BASE + 0x2c)
+#define ADR_STA_MAC_0				(MAC_GLB_SET_BASE + 0x30)
+#define ADR_STA_MAC_1				(MAC_GLB_SET_BASE + 0x34)
+#define ADR_SCRT_SET				(MAC_GLB_SET_BASE + 0x38)
+#define ADR_CH0_TRIG_1				(MB_REG_BASE + 0x10)
+#define ADR_MCU_STATUS				(MB_REG_BASE + 0x18)
+#define ADR_WR_ALC				(ID_MNG_REG_BASE + 0x0)
+#define ADR_TRX_ID_THRESHOLD			(ID_MNG_REG_BASE + 0x20)
+#define ADR_ID_LEN_THREADSHOLD1			(ID_MNG_REG_BASE + 0x38)
+#define ADR_TX_LIMIT_INTR			(ID_MNG_REG_BASE + 0x4c)
+#define ADR_TX_ID_ALL_INFO			(ID_MNG_REG_BASE + 0x50)
+#define ADR_TX_ID_ALL_INFO2			(ID_MNG_REG_BASE + 0x6c)
+#define ADR_PHY_EN_0				(CSR_PHY_BASE + 0x0)
+#define ADR_PHY_EN_1				(CSR_PHY_BASE + 0x4)
+#define ADR_RX_11B_CCA_1			(CSR_PHY_BASE + 0x2008)
+#define ADR_RX_11B_CCA_CONTROL			(CSR_PHY_BASE + 0x20a0)
+#define ADR_TX_GAIN_FACTOR			(CSR_PHY_BASE + 0x71bc)
+#define ADR_MANUAL_ENABLE_REGISTER		(CSR_RF_BASE + 0x4)
+#define ADR_ABB_REGISTER_1			(CSR_RF_BASE + 0xc)
+#define ADR_RX_ADC_REGISTER			(CSR_RF_BASE + 0x30)
+#define ADR_SX_ENABLE_REGISTER			(CSR_RF_BASE + 0x38)
+#define ADR_SYN_REGISTER_1			(CSR_RF_BASE + 0x3c)
+#define ADR_SYN_REGISTER_2			(CSR_RF_BASE + 0x40)
+#define ADR_SYN_DIV_SDM_XOSC			(CSR_RF_BASE + 0x4c)
+#define ADR_DPLL_CP_PFD_REGISTER		(CSR_RF_BASE + 0x5c)
+#define ADR_DPLL_DIVIDER_REGISTER		(CSR_RF_BASE + 0x60)
+#define ADR_SX_LCK_BIN_REGISTERS_I		(CSR_RF_BASE + 0x88)
+#define ADR_TRX_DUMMY_REGISTER			(CSR_RF_BASE + 0x8c)
+#define ADR_READ_ONLY_FLAGS_1			(CSR_RF_BASE + 0x94)
+#define ADR_DPLL_FB_DIVIDER_REGISTERS_I		(CSR_RF_BASE + 0x9c)
+#define ADR_DPLL_FB_DIVIDER_REGISTERS_II	(CSR_RF_BASE + 0xa0)
+#define ADR_SX_LCK_BIN_REGISTERS_II		(CSR_RF_BASE + 0xa4)
+#define ADR_MMU_CTRL				(MMU_REG_BASE + 0x0)
+#define ADR_MIB_EN				(MIB_REG_BASE + 0x0)
+#define ADR_MTX_FAIL				(MIB_REG_BASE + 0x170)
+#define ADR_MTX_FRM				(MIB_REG_BASE + 0x188)
+
+/* Register fields */
+#define MAC_SW_RST_SFT				1
+#define TX_PBOFFSET_SFT				0
+#define TX_INFO_SIZE_SFT			8
+#define RX_INFO_SIZE_SFT			16
+#define RX_LAST_PHY_SIZE_SFT			24
+#define MRX_STP_OFST_SFT			8
+#define MTX_AMPDU_CRC_AUTO_SFT			5
+#define MTX_BCN_TIMER_EN_SFT			0
+#define MTX_TSF_TIMER_EN_SFT			5
+#define MTX_HALT_MNG_UNTIL_DTIM_MSK		0x00000040
+#define MTX_BCN_PKTID_CH_LOCK_SFT		0
+#define MTX_BCN_CFG_VLD_MSK			0x00000006
+#define MTX_BCN_CFG_VLD_SFT			1
+#define MTX_AUTO_BCN_ONGOING_MSK		0x00000008
+#define MTX_BCN_PERIOD_SFT			0
+#define MTX_DTIM_NUM_SFT			24
+#define MTX_DTIM_OFST0_SFT			16
+#define MTX_DUR_SLOT_I_MSK			0xffc0ffff
+#define MTX_DUR_SLOT_SFT			16
+#define MTX_DUR_BURST_SIFS_G_I_MSK		0xffff00ff
+#define MTX_DUR_BURST_SIFS_G_SFT		8
+#define MTX_DUR_SLOT_G_I_MSK			0xffc0ffff
+#define MTX_DUR_SLOT_G_SFT			16
+#define TXQ1_MTX_Q_ECWMIN_SFT			8
+#define TXQ1_MTX_Q_ECWMAX_SFT			12
+#define TXQ1_MTX_Q_TXOP_LIMIT_SFT		16
+#define OP_MODE_MSK				0x00000003
+#define OP_MODE_SFT				0
+#define QOS_EN_MSK				0x00000010
+#define QOS_EN_SFT				4
+#define PB_OFFSET_SFT				8
+#define DUP_FLT_SFT				17
+#define TX_PKT_RSVD_SFT				18
+#define SCRT_PKT_ID_I_MSK			0xffffe03f
+#define SCRT_PKT_ID_SFT				6
+#define SCRT_RPLY_IGNORE_I_MSK			0xfffeffff
+#define SCRT_RPLY_IGNORE_SFT			16
+#define CH0_FULL_MSK				0x00000001
+#define TX_ID_THOLD_SFT				0
+#define RX_ID_THOLD_SFT				8
+#define ID_TX_LEN_THOLD_SFT			4
+#define ID_RX_LEN_THOLD_SFT			13
+#define RG_RF_BB_CLK_SEL_SFT			31
+#define RG_PHY_MD_EN_MSK			0x00000001
+#define RG_PHYRX_MD_EN_MSK			0x00000002
+#define RG_PHYTX_MD_EN_MSK			0x00000004
+#define RG_PHY11GN_MD_EN_MSK			0x00000008
+#define RG_PHY11B_MD_EN_MSK			0x00000010
+#define RG_PHYRXFIFO_MD_EN_MSK			0x00000020
+#define RG_PHYTXFIFO_MD_EN_MSK			0x00000040
+#define RG_PHY11BGN_MD_EN_MSK			0x00000100
+#define RG_DP_BBPLL_PD_SFT			9
+#define RG_DP_BBPLL_SDM_EDGE_SFT		31
+#define MMU_SHARE_MCU_SFT			16
+
+#endif

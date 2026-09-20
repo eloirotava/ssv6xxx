@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config SSV6XXX
+	tristate "iComm/South Silicon Valley SSV6xxx SDIO wireless support"
+	depends on MAC80211 && MMC
+	help
+	  This driver supports the iComm (South Silicon Valley) SSV6051,
+	  also sold as SSV6030, and the dual band SSV6256, both SDIO parts
+	  found in TV boxes and embedded boards, in station and access
+	  point mode.  The two answer to the same SDIO identity, so one
+	  driver serves both and picks the right one at probe.
+
+	  It needs the firmware files ssv/ssv6051-sw.bin (SSV6051) and
+	  ssv/ssv6x5x-sw.bin (SSV6256).
+
+	  If you choose to build a module, it'll be called ssv6xxx.
