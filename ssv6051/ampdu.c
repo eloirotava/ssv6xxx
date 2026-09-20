@@ -503,7 +503,7 @@ bool ssv6051_agg_pump(struct ssv6051_dev *sd, bool *blocked)
 }
 
 static struct ssv6051_agg *agg_lookup(struct ssv6051_dev *sd, u8 wsid, u8 tid,
-				  struct ieee80211_sta **stap)
+				      struct ieee80211_sta **stap)
 {
 	struct ieee80211_sta *sta;
 
@@ -567,7 +567,7 @@ static void agg_settle(struct ssv6051_dev *sd, struct ieee80211_sta *sta,
 	}
 	if (rate >= 0)
 		ssv6051_rc_agg_result(sd, ss, rate, frames, acked,
-				  note->tried[0].count);
+				      note->tried[0].count);
 	spin_unlock_bh(&sd->sta_lock);
 
 	dev_dbg(sd->dev, "agg: %s tid %u ssn %u acked %d/%d tried %u\n",
@@ -625,7 +625,7 @@ void ssv6051_agg_no_ba(struct ssv6051_dev *sd, const u8 *data, size_t len)
 }
 
 int ssv6051_agg_action(struct ssv6051_dev *sd, struct ieee80211_vif *vif,
-		   struct ieee80211_ampdu_params *params)
+		       struct ieee80211_ampdu_params *params)
 {
 	struct ssv6051_sta *ss = (struct ssv6051_sta *)params->sta->drv_priv;
 	u8 tid = params->tid;

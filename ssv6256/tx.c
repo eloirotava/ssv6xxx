@@ -117,7 +117,7 @@ static u8 ssv6256_ctrl_rate(u8 code)
 
 /* Translate one mac80211 rate entry into the chip's rate byte. */
 u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
-		 enum nl80211_band band)
+		     enum nl80211_band band)
 {
 	u8 code;
 
@@ -154,7 +154,7 @@ u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
  * series lends to the 802.11 Duration/ID field.
  */
 u32 ssv6256_fill_rate(struct ssv6256_tx_rate *tr, u8 code, u8 tries, u32 len,
-		  bool unicast, bool rts, bool last)
+		      bool unicast, bool rts, bool last)
 {
 	u8 ctrl = ssv6256_ctrl_rate(code);
 	u32 frame = ssv6256_airtime(code, len);
@@ -220,7 +220,7 @@ static struct sk_buff *ssv6256_status_take(struct ssv6256_dev *sd, u8 slot)
 }
 
 static void ssv6256_tx_done(struct ssv6256_dev *sd, struct sk_buff *skb, bool acked,
-			int tries)
+			    int tries)
 {
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
@@ -265,7 +265,7 @@ void ssv6256_tx_status(struct ssv6256_dev *sd, struct sk_buff *rpt)
 }
 
 static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
-			   struct ieee80211_sta *sta, int hwq)
+			       struct ieee80211_sta *sta, int hwq)
 {
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
@@ -303,7 +303,7 @@ static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
 			if (i == 0) {
 				/* no rate control yet: fall back to 1 Mbps */
 				ack = ssv6256_fill_rate(&d->rate[0],
-						    info->band == NL80211_BAND_2GHZ ?
+							info->band == NL80211_BAND_2GHZ ?
 						    0 : FIELD_PREP(RATE_PHY_MODE,
 								   RATE_PHY_OFDM),
 						    15,
@@ -317,7 +317,7 @@ static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
 		if (i == 0 && FIELD_GET(RATE_PHY_MODE, code) == RATE_PHY_HT)
 			ht = true;
 		tmp = ssv6256_fill_rate(&d->rate[i], code, r->count,
-				    skb->len - SSV_TX_DESC_LEN + FCS_LEN,
+					skb->len - SSV_TX_DESC_LEN + FCS_LEN,
 				    unicast, rts, last);
 		if (i == 0)
 			ack = tmp;
@@ -467,7 +467,7 @@ static int ssv6256_tx_thread(void *data)
 }
 
 void ssv6256_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-	    struct sk_buff *skb)
+		struct sk_buff *skb)
 {
 	struct ssv6256_dev *sd = hw->priv;
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);

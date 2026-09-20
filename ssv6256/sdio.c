@@ -258,7 +258,7 @@ static int ssv6256_upload_firmware(struct ssv6256_dev *sd, const struct firmware
 
 	/* the firmware needs the larger instruction memory */
 	ret = ssv6256_reg_set_bits(sd, ADR_SRAM_MODE, SRAM_MODE_ILM_160K,
-			       SRAM_MODE_ILM_160K);
+				   SRAM_MODE_ILM_160K);
 	blocks = DIV_ROUND_UP(sram, FW_CHECKSUM_BLOCK);
 	ret = ret ?: ssv6256_reg_write(sd, ADR_TX_SEG, blocks << 16);
 	ret = ret ?: ssv6256_start_mcu(sd);

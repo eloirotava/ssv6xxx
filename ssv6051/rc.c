@@ -221,7 +221,7 @@ bool ssv6051_rc_agg_chain(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 *ch
  * number of attempts the chip made at the first rate.
  */
 void ssv6051_rc_agg_result(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 rate,
-		       int frames, int acked, int tries)
+			   int frames, int acked, int tries)
 {
 	struct ssv6051_rc *rc = &ss->rc;
 	u32 p;

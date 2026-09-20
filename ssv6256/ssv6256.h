@@ -303,7 +303,7 @@ void ssv6256_pbuf_free(struct ssv6256_dev *sd, u32 addr);
 void ssv6256_beacon_timing(struct ssv6256_dev *sd, u16 interval, u8 dtim_period);
 int ssv6256_beacon_enable(struct ssv6256_dev *sd, bool enable);
 int ssv6256_beacon_set(struct ssv6256_dev *sd, const u8 *buf, size_t len,
-		   u16 dtim_offset);
+		       u16 dtim_offset);
 void ssv6256_beacon_release(struct ssv6256_dev *sd);
 
 /* mac.c */
@@ -314,15 +314,15 @@ void ssv6256_mac_unregister(struct ssv6256_dev *sd);
 
 /* tx.c */
 void ssv6256_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-	    struct sk_buff *skb);
+		struct sk_buff *skb);
 void ssv6256_tx_status(struct ssv6256_dev *sd, struct sk_buff *skb);
 void ssv6256_tx_kick(struct ssv6256_dev *sd);
 bool ssv6256_tx_queued(struct ssv6256_dev *sd);
 int ssv6256_ac_to_hwq(u16 ac);
 u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
-		 enum nl80211_band band);
+		     enum nl80211_band band);
 u32 ssv6256_fill_rate(struct ssv6256_tx_rate *tr, u8 code, u8 tries, u32 len,
-		  bool unicast, bool rts, bool last);
+		      bool unicast, bool rts, bool last);
 void ssv6256_tx_flush(struct ssv6256_dev *sd);
 int ssv6256_tx_init(struct ssv6256_dev *sd);
 void ssv6256_tx_deinit(struct ssv6256_dev *sd);
@@ -346,13 +346,13 @@ int ssv6256_set_bandwidth(struct ssv6256_dev *sd, enum ssv6256_bandwidth bw);
 
 /* Read-modify-write of one register field, given its mask. */
 static inline int ssv6256_field_write(struct ssv6256_dev *sd, u32 addr, u32 mask,
-				  u32 val)
+				      u32 val)
 {
 	return ssv6256_reg_set_bits(sd, addr, val << __ffs(mask), mask);
 }
 
 static inline int ssv6256_field_read(struct ssv6256_dev *sd, u32 addr, u32 mask,
-				 u32 *val)
+				     u32 *val)
 {
 	u32 regval;
 	int ret;

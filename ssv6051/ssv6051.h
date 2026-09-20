@@ -433,7 +433,7 @@ void ssv6051_set_bssid(struct ssv6051_dev *sd, const u8 *bssid);
 void ssv6051_set_slot(struct ssv6051_dev *sd, bool short_slot);
 void ssv6051_set_qos(struct ssv6051_dev *sd, bool qos);
 int ssv6051_set_edca(struct ssv6051_dev *sd, u16 ac, bool qos,
-		 const struct ieee80211_tx_queue_params *p);
+		     const struct ieee80211_tx_queue_params *p);
 /* ap.c */
 void ssv6051_ap_init(struct ssv6051_dev *sd);
 void ssv6051_ap_stop(struct ssv6051_dev *sd);
@@ -462,7 +462,7 @@ int ssv6051_tx_write(struct ssv6051_dev *sd, int hwq, size_t len);
 int ssv6051_tx_init(struct ssv6051_dev *sd);
 void ssv6051_tx_deinit(struct ssv6051_dev *sd);
 void ssv6051_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-	    struct sk_buff *skb);
+		struct sk_buff *skb);
 void ssv6051_tx_flush(struct ssv6051_dev *sd);
 
 /* rx.c */
@@ -478,12 +478,12 @@ bool ssv6051_agg_pump(struct ssv6051_dev *sd, bool *blocked);
 void ssv6051_agg_ba(struct ssv6051_dev *sd, struct sk_buff *skb);
 void ssv6051_agg_no_ba(struct ssv6051_dev *sd, const u8 *data, size_t len);
 int ssv6051_agg_action(struct ssv6051_dev *sd, struct ieee80211_vif *vif,
-		   struct ieee80211_ampdu_params *params);
+		       struct ieee80211_ampdu_params *params);
 
 /* rc.c */
 bool ssv6051_rc_agg_chain(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 *chain);
 void ssv6051_rc_agg_result(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 rate,
-		       int frames, int acked, int tries);
+			   int frames, int acked, int tries);
 void ssv6051_rc_init(struct ssv6051_dev *sd, struct ieee80211_sta *sta);
 u8 ssv6051_rc_get(struct ssv6051_dev *sd, struct ssv6051_sta *ss, bool *report);
 void ssv6051_rc_report(struct ssv6051_dev *sd, const struct ssv6051_rc_report *rpt);

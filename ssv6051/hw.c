@@ -254,7 +254,7 @@ int ssv6051_set_channel(struct ssv6051_dev *sd, int ch)
 	ssv6051_rf_enable(sd, false);
 	for (fails = 0; fails < 100; fails++) {
 		ret = ssv6051_reg_set_bits(sd, ADR_SYN_DIV_SDM_XOSC,
-				       sd->xtal == SSV_XTAL_40M ? BIT(13) : 0, BIT(13));
+					   sd->xtal == SSV_XTAL_40M ? BIT(13) : 0, BIT(13));
 		ret = ret ?: ssv6051_reg_set_bits(sd, ADR_SX_LCK_BIN_REGISTERS_I,
 					      BIT(19), BIT(19));
 		ret = ret ?: ssv6051_reg_set_bits(sd, ADR_SYN_REGISTER_1,
@@ -347,7 +347,7 @@ int ssv6051_calibrate(struct ssv6051_dev *sd)
 	cfg->phy_tbl_size = cpu_to_le32(nphy * 8);
 	cfg->rf_tbl_size = cpu_to_le32(nrf * 8);
 	ssv6051_put_table(ssv6051_put_table(buf + sizeof(*cfg), phy_setting, nphy),
-		      asic_rf_setting, nrf);
+			  asic_rf_setting, nrf);
 
 	sd->cali_state = 0;
 	ret = ssv6051_send_cmd(sd, SSV_CMD_INIT_CALI, buf, len);
@@ -421,18 +421,18 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 	ssv6051_reg_write(sd, ADR_TXQ4_MTX_Q_AIFSN, 0xffff2101);
 	/* nothing of an earlier AP session may survive: DTIM hold, beacon, BSSID */
 	ssv6051_reg_set_bits(sd, ADR_MTX_BCN_EN_MISC, 0,
-			 MTX_HALT_MNG_UNTIL_DTIM_MSK | BIT(MTX_BCN_TIMER_EN_SFT));
+			     MTX_HALT_MNG_UNTIL_DTIM_MSK | BIT(MTX_BCN_TIMER_EN_SFT));
 	ssv6051_reg_write(sd, ADR_BSSID_0, 0);
 	ssv6051_reg_write(sd, ADR_BSSID_1, 0);
 	ssv6051_reg_write(sd, ADR_CONTROL, 0x12000006);
 	ssv6051_reg_write(sd, ADR_RX_TIME_STAMP_CFG, (28 << MRX_STP_OFST_SFT) | 1);
 	ssv6051_reg_write(sd, ADR_HCI_TX_RX_INFO_SIZE,
-		      (TXPB_OFFSET << TX_PBOFFSET_SFT) |
+			  (TXPB_OFFSET << TX_PBOFFSET_SFT) |
 		      (SSV_TX_DESC_LEN << TX_INFO_SIZE_SFT) |
 		      (SSV_RX_DESC_LEN << RX_INFO_SIZE_SFT) |
 		      (RX_PINFO_PAD << RX_LAST_PHY_SIZE_SFT));
 	ssv6051_reg_set_bits(sd, ADR_MMU_CTRL, 0xff << MMU_SHARE_MCU_SFT,
-			 0xff << MMU_SHARE_MCU_SFT);
+			     0xff << MMU_SHARE_MCU_SFT);
 	ssv6051_reg_set_bits(sd, ADR_MRX_WATCH_DOG, 0, 0xf);
 	ssv6051_reg_read(sd, ADR_TRX_ID_THRESHOLD, &val);
 	ssv6051_reg_write(sd, ADR_TRX_ID_THRESHOLD, (val & 0xffff0000) |
@@ -442,7 +442,7 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 		      (HW_TX_PAGES << ID_TX_LEN_THOLD_SFT) |
 		      (HW_RX_PAGES << ID_RX_LEN_THOLD_SFT));
 	ssv6051_reg_set_bits(sd, ADR_MTX_BCN_EN_MISC, BIT(MTX_TSF_TIMER_EN_SFT),
-			 BIT(MTX_TSF_TIMER_EN_SFT));
+			     BIT(MTX_TSF_TIMER_EN_SFT));
 	ssv6051_reg_write(sd, 0xcd010004, 0x1213);
 
 	/* chip-side buffers: security table, then the PHY info table */
@@ -466,7 +466,7 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 	}
 	sd->sec_buf = sd->key_buf[0];
 	ssv6051_reg_set_bits(sd, ADR_SCRT_SET, (sd->sec_buf >> 16) << SCRT_PKT_ID_SFT,
-			 ~SCRT_PKT_ID_I_MSK);
+			     ~SCRT_PKT_ID_I_MSK);
 
 	sd->pinfo_buf = sd->sec_buf + SSV_HW_SEC_SIZE;
 	p = phy_info_tbl;
@@ -501,7 +501,7 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 	ssv6051_reg_write(sd, ADR_RX_FLOW_CTRL, M_ENG_MACRX | (M_ENG_CPU << 4) |
 		      (M_ENG_HWHCI << 8));
 	ssv6051_reg_set_bits(sd, ADR_SCRT_SET, 1 << SCRT_RPLY_IGNORE_SFT,
-			 ~SCRT_RPLY_IGNORE_I_MSK);
+			     ~SCRT_RPLY_IGNORE_I_MSK);
 
 	for (i = 0; i < DECI_TBL1_SIZE; i++)
 		ssv6051_reg_write(sd, ADR_MRX_FLT_TB0 + i * 4, deci_tbl[i]);
@@ -521,7 +521,7 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 	ssv6051_reg_set_bits(sd, ADR_PHY_EN_1, RG_PHY_MD_EN_MSK, RG_PHY_MD_EN_MSK);
 	/* the MAC computes the FCS of each MPDU inside an aggregate */
 	ssv6051_reg_set_bits(sd, ADR_MTX_MISC_EN, BIT(MTX_AMPDU_CRC_AUTO_SFT),
-			 BIT(MTX_AMPDU_CRC_AUTO_SFT));
+			     BIT(MTX_AMPDU_CRC_AUTO_SFT));
 	return ssv6051_send_cmd(sd, SSV_CMD_WATCHDOG_START, NULL, 0);
 }
 
@@ -585,9 +585,9 @@ void ssv6051_set_slot(struct ssv6051_dev *sd, bool short_slot)
 	u32 slot = short_slot ? 9 : 20;
 
 	ssv6051_reg_set_bits(sd, ADR_MTX_DUR_IFS, slot << MTX_DUR_SLOT_SFT,
-			 ~MTX_DUR_SLOT_I_MSK);
+			     ~MTX_DUR_SLOT_I_MSK);
 	ssv6051_reg_set_bits(sd, ADR_MTX_DUR_SIFS_G,
-			 (0xa << MTX_DUR_BURST_SIFS_G_SFT) | (slot << MTX_DUR_SLOT_G_SFT),
+			     (0xa << MTX_DUR_BURST_SIFS_G_SFT) | (slot << MTX_DUR_SLOT_G_SFT),
 			 ~(MTX_DUR_BURST_SIFS_G_I_MSK & MTX_DUR_SLOT_G_I_MSK));
 }
 
@@ -604,7 +604,7 @@ void ssv6051_set_qos(struct ssv6051_dev *sd, bool qos)
 }
 
 int ssv6051_set_edca(struct ssv6051_dev *sd, u16 ac, bool qos,
-		 const struct ieee80211_tx_queue_params *p)
+		     const struct ieee80211_tx_queue_params *p)
 {
 	u32 cw;
 
@@ -619,7 +619,7 @@ int ssv6051_set_edca(struct ssv6051_dev *sd, u16 ac, bool qos,
 }
 
 static int ssv6051_wsid_cmd(struct ssv6051_dev *sd, u8 op, int wsid, const u8 *addr,
-			u8 sec)
+			    u8 sec)
 {
 	struct ssv6051_wsid_params p = {
 		.cmd = op,
@@ -666,21 +666,21 @@ void ssv6051_wsid_del(struct ssv6051_dev *sd, int wsid, const u8 *addr)
 void ssv6051_set_ap_mode(struct ssv6051_dev *sd, bool ap)
 {
 	ssv6051_reg_set_bits(sd, ADR_GLBLE_SET, ap ? SSV_OPMODE_AP : SSV_OPMODE_STA,
-			 OP_MODE_MSK);
+			     OP_MODE_MSK);
 	ssv6051_reg_set_bits(sd, ADR_MTX_BCN_EN_MISC, ap ? MTX_HALT_MNG_UNTIL_DTIM_MSK : 0,
-			 MTX_HALT_MNG_UNTIL_DTIM_MSK);
+			     MTX_HALT_MNG_UNTIL_DTIM_MSK);
 }
 
 void ssv6051_beacon_enable(struct ssv6051_dev *sd, bool on)
 {
 	ssv6051_reg_set_bits(sd, ADR_MTX_BCN_EN_MISC, on ? BIT(MTX_BCN_TIMER_EN_SFT) : 0,
-			 BIT(MTX_BCN_TIMER_EN_SFT));
+			     BIT(MTX_BCN_TIMER_EN_SFT));
 }
 
 void ssv6051_beacon_timing(struct ssv6051_dev *sd, u16 interval, u8 dtim_period)
 {
 	ssv6051_reg_write(sd, ADR_MTX_BCN_PRD,
-		      ((interval ?: 100) << MTX_BCN_PERIOD_SFT) |
+			  ((interval ?: 100) << MTX_BCN_PERIOD_SFT) |
 		      ((max_t(u8, dtim_period, 1) - 1) << MTX_DTIM_NUM_SFT));
 }
 

@@ -67,7 +67,7 @@ u32 ssv6051_ht_airtime(u8 mcs, u32 len, bool sgi)
  * ACK duration for the 802.11 Duration/ID field.
  */
 static u32 ssv6051_set_timing(struct ssv6051_dev *sd, struct ssv6051_tx_desc *d,
-			  u8 drate, u32 len, bool unicast, bool rts)
+			      u8 drate, u32 len, bool unicast, bool rts)
 {
 	const struct ssv6051_rate *r = &ssv6051_rates[drate];
 	const struct ssv6051_rate *c = &ssv6051_rates[r->ctrl];
@@ -128,7 +128,7 @@ static u8 ssv6051_cck_preamble(struct ssv6051_dev *sd, u8 rate)
 }
 
 static bool ssv6051_build_desc(struct ssv6051_dev *sd, struct sk_buff *skb,
-			   struct ieee80211_sta *sta, int hwq)
+			       struct ieee80211_sta *sta, int hwq)
 {
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
@@ -412,7 +412,7 @@ static int ssv6051_tx_thread(void *data)
 }
 
 void ssv6051_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-	    struct sk_buff *skb)
+		struct sk_buff *skb)
 {
 	struct ssv6051_dev *sd = hw->priv;
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);

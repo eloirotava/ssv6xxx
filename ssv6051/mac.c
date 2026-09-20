@@ -112,13 +112,13 @@ static int ssv6051_config(struct ieee80211_hw *hw, int radio_idx, u32 changed)
 #define SSV_FILTERS (FIF_ALLMULTI | FIF_BCN_PRBRESP_PROMISC | FIF_PSPOLL)
 
 static void ssv6051_configure_filter(struct ieee80211_hw *hw, unsigned int changed,
-				 unsigned int *total, u64 multicast)
+				     unsigned int *total, u64 multicast)
 {
 	*total &= SSV_FILTERS;
 }
 
 static void ssv6051_bss_info_changed(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif,
+				     struct ieee80211_vif *vif,
 				 struct ieee80211_bss_conf *info, u64 changed)
 {
 	struct ssv6051_dev *sd = hw->priv;
@@ -154,7 +154,7 @@ static int ssv6051_set_tim(struct ieee80211_hw *hw, struct ieee80211_sta *sta, b
 }
 
 static int ssv6051_sta_add(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		       struct ieee80211_sta *sta)
+			   struct ieee80211_sta *sta)
 {
 	struct ssv6051_dev *sd = hw->priv;
 	struct ssv6051_sta *ss = (struct ssv6051_sta *)sta->drv_priv;
@@ -182,7 +182,7 @@ static int ssv6051_sta_add(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 }
 
 static int ssv6051_sta_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			  struct ieee80211_sta *sta)
+			      struct ieee80211_sta *sta)
 {
 	struct ssv6051_dev *sd = hw->priv;
 	struct ssv6051_sta *ss = (struct ssv6051_sta *)sta->drv_priv;
@@ -209,7 +209,7 @@ static int ssv6051_sta_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif
 }
 
 static int ssv6051_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			 struct ieee80211_sta *sta, enum ieee80211_sta_state old,
+			     struct ieee80211_sta *sta, enum ieee80211_sta_state old,
 			 enum ieee80211_sta_state new)
 {
 	struct ssv6051_dev *sd = hw->priv;
@@ -228,7 +228,7 @@ static int ssv6051_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 }
 
 static int ssv6051_conf_tx(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		       unsigned int link_id, u16 ac,
+			   unsigned int link_id, u16 ac,
 		       const struct ieee80211_tx_queue_params *params)
 {
 	struct ssv6051_dev *sd = hw->priv;
@@ -241,7 +241,7 @@ static int ssv6051_conf_tx(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 }
 
 static void ssv6051_sw_scan_start(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			      const u8 *mac_addr)
+				  const u8 *mac_addr)
 {
 	struct ssv6051_dev *sd = hw->priv;
 
@@ -260,7 +260,7 @@ static void ssv6051_sw_scan_complete(struct ieee80211_hw *hw, struct ieee80211_v
 }
 
 static int ssv6051_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			    struct ieee80211_ampdu_params *params)
+				struct ieee80211_ampdu_params *params)
 {
 	struct ssv6051_dev *sd = hw->priv;
 	int ret = 0;

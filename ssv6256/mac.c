@@ -98,7 +98,7 @@ static int ssv6256_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *
 }
 
 static void ssv6256_remove_interface(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif)
+				     struct ieee80211_vif *vif)
 {
 	struct ssv6256_dev *sd = hw->priv;
 
@@ -147,13 +147,13 @@ static int ssv6256_config(struct ieee80211_hw *hw, int radio_idx, u32 changed)
 #define SSV_FILTERS (FIF_ALLMULTI | FIF_BCN_PRBRESP_PROMISC | FIF_PSPOLL)
 
 static void ssv6256_configure_filter(struct ieee80211_hw *hw, unsigned int changed,
-				 unsigned int *total, u64 multicast)
+				     unsigned int *total, u64 multicast)
 {
 	*total &= SSV_FILTERS;
 }
 
 static void ssv6256_bss_info_changed(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif,
+				     struct ieee80211_vif *vif,
 				 struct ieee80211_bss_conf *info, u64 changed)
 {
 	struct ssv6256_dev *sd = hw->priv;
@@ -175,7 +175,7 @@ static void ssv6256_bss_info_changed(struct ieee80211_hw *hw,
 
 /* A station's power save buffer changed: the beacon TIM follows. */
 static int ssv6256_set_tim(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
-		       bool set)
+			   bool set)
 {
 	struct ssv6256_dev *sd = hw->priv;
 
@@ -185,7 +185,7 @@ static int ssv6256_set_tim(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
 
 /* Channel access parameters of one access category. */
 static int ssv6256_conf_tx(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		       unsigned int link_id, u16 ac,
+			   unsigned int link_id, u16 ac,
 		       const struct ieee80211_tx_queue_params *params)
 {
 	struct ssv6256_dev *sd = hw->priv;
@@ -234,7 +234,7 @@ static void ssv6256_sta_del(struct ssv6256_dev *sd, struct ieee80211_sta *sta)
 }
 
 static int ssv6256_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			 struct ieee80211_sta *sta, enum ieee80211_sta_state old,
+			     struct ieee80211_sta *sta, enum ieee80211_sta_state old,
 			 enum ieee80211_sta_state new)
 {
 	struct ssv6256_dev *sd = hw->priv;
@@ -256,7 +256,7 @@ static int ssv6256_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
  * the chip needs more hand holding than it is worth so far.
  */
 static int ssv6256_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			    struct ieee80211_ampdu_params *params)
+				struct ieee80211_ampdu_params *params)
 {
 	switch (params->action) {
 	case IEEE80211_AMPDU_RX_START:
@@ -269,7 +269,7 @@ static int ssv6256_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *v
 
 /* Wait for what is queued to reach the chip, before a channel change. */
 static void ssv6256_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		      u32 queues, bool drop)
+			  u32 queues, bool drop)
 {
 	struct ssv6256_dev *sd = hw->priv;
 	int i;
