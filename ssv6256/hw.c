@@ -11,6 +11,7 @@
 #include <linux/delay.h>
 #include <linux/etherdevice.h>
 #include <linux/jhash.h>
+#include <linux/module.h>
 #include <linux/mmc/card.h>
 #include <linux/of_net.h>
 #include <linux/unaligned.h>
@@ -228,6 +229,73 @@ static int ssv6256_mac_reset(struct ssv6256_dev *sd)
 }
 
 /*
+ * Ask the chip to group received frames: instead of interrupting the
+ * host for each one, it fills a buffer and hands the lot over in a
+ * single bus transaction.  Each frame inside it is preceded by a short
+ * header saying how far the next one is (see rx.c).
+ *
+ * Three frames or 6 ms of waiting, whichever comes first, so that a
+ * lone frame is not held back.
+ */
+#define RX_AGGR_COUNT		8
+#define RX_AGGR_TIMER		20
+
+static int rx_count = RX_AGGR_COUNT;
+module_param(rx_count, int, 0444);
+MODULE_PARM_DESC(rx_count, "DBG: frames per batch (1-15)");
+
+static int rx_size = 0x3000;
+module_param(rx_size, int, 0444);
+MODULE_PARM_DESC(rx_size, "DBG: batch size in bytes");
+
+static int rx_timer = RX_AGGR_TIMER;
+module_param(rx_timer, int, 0444);
+MODULE_PARM_DESC(rx_timer, "DBG: batch timer");
+
+int ssv6256_rx_aggr_init(struct ssv6256_dev *sd)
+{
+	u32 val;
+	int i;
+
+	/* nothing may be in flight while the format changes */
+	ssv6256_reg_set_bits(sd, ADR_HCI_TRX_MODE, 0, HCI_RX_EN);
+	for (i = 0; i < 1000; i++) {
+		if (ssv6256_reg_read(sd, ADR_RX_PACKET_LENGTH_STATUS, &val))
+			return -EIO;
+		if (!(val & HCI_RX_LEN))
+			break;
+		usleep_range(50, 100);
+	}
+	if (val & HCI_RX_LEN) {
+		dev_err(sd->dev, "receive engine did not drain\n");
+		return -ETIMEDOUT;
+	}
+
+	ssv6256_reg_set_bits(sd, ADR_HCI_TRX_MODE, HCI_RX_FORM_1, HCI_RX_FORM_1);
+	ssv6256_reg_write(sd, ADR_FORCE_RX_AGGREGATION_MODE,
+		      FIELD_PREP(RX_AGG_CNT, clamp(rx_count, 1, 15)) |
+		      FIELD_PREP(RX_AGG_TIMER_RELOAD, rx_timer));
+	ssv6256_field_write(sd, ADR_HCI_FORCE_PRE_BULK_IN, HCI_BULK_IN_HOST_SIZE,
+			clamp(rx_size, 0x800, SSV_RX_AGGR_SIZE));
+	ssv6256_reg_set_bits(sd, ADR_HCI_TRX_MODE, HCI_RX_EN, HCI_RX_EN);
+
+	/*
+	 * The chip does not always take the batch format: read it back,
+	 * and if it did not stick, stay with one frame per read.  Slower,
+	 * but the alternative is a receive side that delivers nothing.
+	 */
+	if (ssv6256_reg_read(sd, ADR_HCI_TRX_MODE, &val) ||
+	    !(val & HCI_RX_FORM_1)) {
+		dev_warn(sd->dev, "batch receive did not take (%08x)\n", val);
+		ssv6256_reg_set_bits(sd, ADR_HCI_TRX_MODE, 0, HCI_RX_FORM_1);
+		sd->rx_aggr = false;
+		return 0;
+	}
+	sd->rx_aggr = true;
+	return 0;
+}
+
+/*
  * MAC timing follows whatever digital clock the PLL settled on, so this
  * has to run after the radio is up.
  */
@@ -243,13 +311,13 @@ static int ssv6256_mac_clock(struct ssv6256_dev *sd)
 	switch (clk) {
 	case CLK_DIGI_80M:
 		ssv6256_reg_set_bits(sd, ADR_MTX_TIME_FINETUNE,
-				     MAC_CLK_80M | (26 << __ffs(PHYTXSTART_NCYCLE)),
+				 MAC_CLK_80M | (26 << __ffs(PHYTXSTART_NCYCLE)),
 				 MAC_CLK_80M | PHYTXSTART_NCYCLE);
 		return ssv6256_field_write(sd, ADR_PRESCALER_USTIMER,
 				       PRESCALER_US, 80);
 	case CLK_DIGI_40M:
 		ssv6256_reg_set_bits(sd, ADR_MTX_TIME_FINETUNE,
-				     13 << __ffs(PHYTXSTART_NCYCLE),
+				 13 << __ffs(PHYTXSTART_NCYCLE),
 				 MAC_CLK_80M | PHYTXSTART_NCYCLE);
 		return ssv6256_field_write(sd, ADR_PRESCALER_USTIMER,
 				       PRESCALER_US, 40);
@@ -304,24 +372,24 @@ void ssv6256_pbuf_free(struct ssv6256_dev *sd, u32 addr)
 			break;
 	}
 	ssv6256_reg_write(sd, ADR_CH0_TRIG_1,
-			  (M_ENG_TRASH_CAN << 7) | (addr >> 16));
+		      (M_ENG_TRASH_CAN << 7) | (addr >> 16));
 }
 
 /* In access point mode the MAC sends the beacon out of its own buffer. */
 void ssv6256_set_ap_mode(struct ssv6256_dev *sd, bool ap)
 {
 	ssv6256_field_write(sd, ADR_GLBLE_SET, OP_MODE,
-			    ap ? OPMODE_AP : OPMODE_STA);
+			ap ? OPMODE_AP : OPMODE_STA);
 }
 
 void ssv6256_beacon_timing(struct ssv6256_dev *sd, u16 interval, u8 dtim_period)
 {
 	ssv6256_field_write(sd, ADR_MTX_BCN_PRD, MTX_BCN_PERIOD, interval ?: 100);
 	ssv6256_field_write(sd, ADR_MTX_BCN_DTIM_CONFG, MTX_DTIM_NUM,
-			    max_t(u8, dtim_period, 1) - 1);
+			max_t(u8, dtim_period, 1) - 1);
 	/* the MAC fills in the time stamp, sequence number and DTIM count */
 	ssv6256_reg_set_bits(sd, ADR_MTX_BCN_EN_MISC,
-			     MTX_TIME_STAMP_AUTO_FILL | MTX_BCN_AUTO_SEQ_NO |
+			 MTX_TIME_STAMP_AUTO_FILL | MTX_BCN_AUTO_SEQ_NO |
 			 MTX_DTIM_CNT_AUTO_FILL,
 			 MTX_TIME_STAMP_AUTO_FILL | MTX_BCN_AUTO_SEQ_NO |
 			 MTX_DTIM_CNT_AUTO_FILL);
@@ -339,7 +407,7 @@ int ssv6256_beacon_enable(struct ssv6256_dev *sd, bool enable)
  * the MAC can fill it in.
  */
 int ssv6256_beacon_set(struct ssv6256_dev *sd, const u8 *buf, size_t len,
-		       u16 dtim_offset)
+		   u16 dtim_offset)
 {
 	static const u32 pkt_reg[] = {
 		ADR_MTX_BCN_PKT_SET0, ADR_MTX_BCN_PKT_SET1,
@@ -371,9 +439,9 @@ int ssv6256_beacon_set(struct ssv6256_dev *sd, const u8 *buf, size_t len,
 
 	for (i = 0; i < len; i += 4)
 		ssv6256_reg_write(sd, sd->bcn_buf[slot] + i,
-				  get_unaligned_le32(buf + i));
+			      get_unaligned_le32(buf + i));
 	ssv6256_field_write(sd, pkt_reg[slot], MTX_BCN_PKT_ID,
-			    FIELD_GET(PBUF_ADDR_ID, sd->bcn_buf[slot]));
+			FIELD_GET(PBUF_ADDR_ID, sd->bcn_buf[slot]));
 	ssv6256_field_write(sd, dtim_reg[slot], MTX_DTIM_OFST, dtim_offset);
 	return ssv6256_field_write(sd, ADR_MTX_BCN_MISC, MTX_BCN_PKTID_CH_LOCK, 0);
 }
@@ -419,7 +487,7 @@ static int ssv6256_mac_init(struct ssv6256_dev *sd)
 
 	/* where the 802.11 header starts, and how long each descriptor is */
 	ssv6256_reg_write(sd, ADR_HCI_TX_RX_INFO_SIZE,
-			  (PB_OFFSET_BYTES << __ffs(TX_PBOFFSET)) |
+		      (PB_OFFSET_BYTES << __ffs(TX_PBOFFSET)) |
 		      (TX_DESC_SIZE << __ffs(TX_INFO_SIZE)) |
 		      (RX_DESC_SIZE << __ffs(RX_INFO_SIZE)) |
 		      (RX_PINFO_PAD << __ffs(RX_LAST_PHY_SIZE)));
@@ -428,12 +496,16 @@ static int ssv6256_mac_init(struct ssv6256_dev *sd)
 	if (!ssv6256_reg_read(sd, ADR_MRX_WATCH_DOG, &val))
 		ssv6256_reg_write(sd, ADR_MRX_WATCH_DOG, val & ~0xfU);
 
+	ret = ssv6256_rx_aggr_init(sd);
+	if (ret)
+		return ret;
+
 	ssv6256_reg_set_bits(sd, ADR_TRX_ID_THRESHOLD,
-			     (ID_TX_THRESHOLD << __ffs(TX_ID_THOLD)) |
+			 (ID_TX_THRESHOLD << __ffs(TX_ID_THOLD)) |
 			 (ID_RX_THRESHOLD << __ffs(RX_ID_THOLD)),
 			 TX_ID_THOLD | RX_ID_THOLD);
 	ssv6256_reg_set_bits(sd, ADR_ID_LEN_THREADSHOLD1,
-			     (PAGE_TX_THRESHOLD << __ffs(ID_TX_LEN_THOLD)) |
+			 (PAGE_TX_THRESHOLD << __ffs(ID_TX_LEN_THOLD)) |
 			 (PAGE_RX_THRESHOLD << __ffs(ID_RX_LEN_THOLD)),
 			 ID_TX_LEN_THOLD | ID_RX_LEN_THOLD);
 	ssv6256_reg_write(sd, ADR_TX_LIMIT_INTR, TX_LIMIT_INT_EN |
@@ -456,10 +528,10 @@ static int ssv6256_mac_init(struct ssv6256_dev *sd)
 		ssv6256_reg_write(sd, ADR_MRX_FLT_TB0 + i * 4, deci_tbl[i]);
 	for (i = 0; i < DECI_TBL2_SIZE; i++)
 		ssv6256_reg_write(sd, ADR_MRX_FLT_EN0 + i * 4,
-				  deci_tbl[DECI_TBL1_SIZE + i]);
+			      deci_tbl[DECI_TBL1_SIZE + i]);
 
 	ssv6256_reg_set_bits(sd, ADR_GLBLE_SET,
-			     (OPMODE_STA << __ffs(OP_MODE)) | CCMP_H_SEL |
+			 (OPMODE_STA << __ffs(OP_MODE)) | CCMP_H_SEL |
 			 SEC_LUT_SEL, OP_MODE | CCMP_H_SEL | SEC_LUT_SEL);
 	ssv6256_field_write(sd, ADR_MTX_RATERPT, MTX_RATERPT_HWID, M_ENG_HWHCI);
 	ssv6256_reg_write(sd, ADR_AMPDU_SCOREBOAD_SIZE, MAX_RX_AGGR_SIZE);
@@ -501,6 +573,22 @@ int ssv6256_hw_start(struct ssv6256_dev *sd)
 		return ret;
 	dev_info(sd->dev, "firmware running\n");
 
+	/*
+	 * The firmware start sometimes clears the batch format.  Put it
+	 * back without touching the receive engine, which is already
+	 * running by now.
+	 */
+	if (sd->rx_aggr) {
+		u32 mode;
+
+		if (!ssv6256_reg_read(sd, ADR_HCI_TRX_MODE, &mode) &&
+		    !(mode & HCI_RX_FORM_1)) {
+			dev_info(sd->dev, "batch format restored after start\n");
+			ssv6256_reg_set_bits(sd, ADR_HCI_TRX_MODE, HCI_RX_FORM_1,
+					 HCI_RX_FORM_1);
+		}
+	}
+
 	ssv6256_phy_enable(sd, true);
 	/* the bus was slowed down for the firmware upload */
 	ssv6256_set_bus_clock(sd, SSV_BUS_CLOCK_MAX);
@@ -525,7 +613,7 @@ int ssv6256_wsid_add(struct ssv6256_dev *sd, int wsid, const u8 *addr)
 	int ret;
 
 	ret = ssv6256_reg_write(sd, wsid_reg[wsid] + WSID_PEER_MAC0,
-				get_unaligned_le32(addr));
+			    get_unaligned_le32(addr));
 	ret = ret ?: ssv6256_reg_write(sd, wsid_reg[wsid] + WSID_PEER_MAC1,
 				   get_unaligned_le16(addr + 4));
 	return ret ?: ssv6256_reg_write(sd, wsid_reg[wsid], 1);

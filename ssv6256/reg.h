@@ -47,6 +47,11 @@
 
 /* Host controller interface */
 #define ADR_CONTROL				0xc1000000
+#define ADR_HCI_TRX_MODE			0xc1000004
+#define  HCI_RX_EN				BIT(1)
+#define  HCI_RX_FORM_1				BIT(30)
+#define ADR_RX_PACKET_LENGTH_STATUS		0xc1000014
+#define  HCI_RX_LEN				GENMASK(15, 0)
 #define ADR_HCI_TX_RX_INFO_SIZE			0xc1000030
 #define  TX_PBOFFSET				GENMASK(7, 0)
 #define  TX_INFO_SIZE				GENMASK(15, 8)
@@ -56,6 +61,12 @@
 #define ADR_TX_ETHER_TYPE_1			0xc1000054
 #define ADR_RX_ETHER_TYPE_0			0xc1000060
 #define ADR_RX_ETHER_TYPE_1			0xc1000064
+#define ADR_HCI_FORCE_PRE_BULK_IN		0xc10000a0
+#define  HCI_BULK_IN_HOST_SIZE			GENMASK(16, 0)
+#define ADR_FORCE_RX_AGGREGATION_MODE		0xc1000168
+#define  RX_AGG_CNT				GENMASK(3, 0)
+#define  RX_AGG_METHOD_3			BIT(7)
+#define  RX_AGG_TIMER_RELOAD			GENMASK(31, 16)
 
 /* MAC receive engine */
 #define ADR_MRX_FLT_TB0				0xc6000070

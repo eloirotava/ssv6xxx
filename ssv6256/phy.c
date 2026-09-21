@@ -149,7 +149,7 @@ static int ssv6256_cal_wait(struct ssv6256_dev *sd, u32 done, const char *what)
 static void ssv6256_cal_channel(struct ssv6256_dev *sd)
 {
 	ssv6256_reg_set_bits(sd, ADR_SX_CH_TABLE,
-			     (6 << __ffs(RG_SX_CHANNEL)) | RG_SX_RFCH_MAP_EN,
+			 (6 << __ffs(RG_SX_CHANNEL)) | RG_SX_RFCH_MAP_EN,
 			 RG_SX_CHANNEL | RG_SX_RFCH_MAP_EN);
 }
 
@@ -182,7 +182,7 @@ static int ssv6256_cal_rxdc(struct ssv6256_dev *sd)
 
 	ssv6256_cal_channel(sd);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    CAL_IDX_WIFI2P4G_RXDC);
+			CAL_IDX_WIFI2P4G_RXDC);
 	usleep_range(100, 200);
 
 	ret = ssv6256_cal_wait(sd, RO_WF_DCCAL_DONE, "RX DC");
@@ -197,24 +197,24 @@ static int ssv6256_cal_rxrc(struct ssv6256_dev *sd, bool ht40)
 
 	if (ht40) {
 		ssv6256_field_write(sd, ADR_CALIBRATION_TIMER_REGISTER,
-				    RG_RX_N_RCCAL_DELAY, 2);
+				RG_RX_N_RCCAL_DELAY, 2);
 		ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_4, RG_PHASE_35M, 0x3fff);
 		ssv6256_reg_set_bits(sd, ADR_RF_D_CAL_TOP_6,
-				     0x213 << __ffs(RG_RX_RCCAL_40M_TARG),
+				 0x213 << __ffs(RG_RX_RCCAL_40M_TARG),
 				 RG_RX_RCCAL_40M_TARG | RG_RCCAL_POLAR_INV);
 	} else {
 		ssv6256_field_write(sd, ADR_CALIBRATION_TIMER_REGISTER,
-				    RG_RX_RCCAL_DELAY, 2);
+				RG_RX_RCCAL_DELAY, 2);
 		ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_2, RG_PHASE_17P5M, 0x20d0);
 		ssv6256_reg_set_bits(sd, ADR_RF_D_CAL_TOP_6,
-				     0x22c << __ffs(RG_RX_RCCAL_TARG),
+				 0x22c << __ffs(RG_RX_RCCAL_TARG),
 				 RG_RX_RCCAL_TARG | RG_RCCAL_POLAR_INV);
 	}
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_0, RG_ALPHA_SEL, 2);
 	ssv6256_field_write(sd, ADR_CALIBRATION_GAIN_REGISTER0, RG_PGAG_RCCAL, 3);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_4, RG_TONE_SCALE, 0x80);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    ht40 ? CAL_IDX_BW40_RXRC : CAL_IDX_BW20_RXRC);
+			ht40 ? CAL_IDX_BW40_RXRC : CAL_IDX_BW20_RXRC);
 	usleep_range(250, 500);
 
 	ret = ssv6256_cal_wait(sd, RO_RCCAL_DONE, ht40 ? "HT40 RX RC" : "RX RC");
@@ -228,14 +228,14 @@ static void ssv6256_cal_tx_setup(struct ssv6256_dev *sd)
 	ssv6256_cal_channel(sd);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_TXGAIN_PHYCTRL, 1);
 	ssv6256_reg_set_bits(sd, ADR_CALIBRATION_GAIN_REGISTER0,
-			     (6 << __ffs(RG_TX_GAIN_TXCAL)) |
+			 (6 << __ffs(RG_TX_GAIN_TXCAL)) |
 			 (3 << __ffs(RG_PGAG_TXCAL)),
 			 RG_TX_GAIN_TXCAL | RG_PGAG_TXCAL);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_4, RG_TONE_SCALE, 0x80);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_9, RG_PRE_DC_AUTO, 1);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_3, RG_TX_IQCAL_TIME, 1);
 	ssv6256_reg_set_bits(sd, ADR_RF_D_CAL_TOP_3,
-			     (0xccc << __ffs(RG_PHASE_1M)) |
+			 (0xccc << __ffs(RG_PHASE_1M)) |
 			 (0xccc << __ffs(RG_PHASE_RXIQ_1M)),
 			 RG_PHASE_1M | RG_PHASE_RXIQ_1M);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_0, RG_ALPHA_SEL, 2);
@@ -248,7 +248,7 @@ static int ssv6256_cal_txdc(struct ssv6256_dev *sd)
 
 	ssv6256_cal_tx_setup(sd);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    CAL_IDX_WIFI2P4G_TXLO);
+			CAL_IDX_WIFI2P4G_TXLO);
 	usleep_range(250, 500);
 
 	ret = ssv6256_cal_wait(sd, RO_TXDC_DONE, "TX DC");
@@ -263,7 +263,7 @@ static int ssv6256_cal_txiq(struct ssv6256_dev *sd)
 
 	ssv6256_cal_tx_setup(sd);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    CAL_IDX_WIFI2P4G_TXIQ);
+			CAL_IDX_WIFI2P4G_TXIQ);
 	usleep_range(250, 500);
 
 	ret = ssv6256_cal_wait(sd, RO_TXIQ_DONE, "TX IQ");
@@ -279,19 +279,19 @@ static int ssv6256_cal_rxiq(struct ssv6256_dev *sd)
 	ssv6256_cal_channel(sd);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_TXGAIN_PHYCTRL, 1);
 	ssv6256_reg_set_bits(sd, ADR_CALIBRATION_GAIN_REGISTER0,
-			     (3 << __ffs(RG_PGAG_RXIQCAL)) |
+			 (3 << __ffs(RG_PGAG_RXIQCAL)) |
 			 (6 << __ffs(RG_TX_GAIN_RXIQCAL)),
 			 RG_RFG_RXIQCAL | RG_PGAG_RXIQCAL | RG_TX_GAIN_RXIQCAL);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_4, RG_TONE_SCALE, 0x80);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_9, RG_PRE_DC_AUTO, 1);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_3, RG_TX_IQCAL_TIME, 1);
 	ssv6256_reg_set_bits(sd, ADR_RF_D_CAL_TOP_3,
-			     (0xccc << __ffs(RG_PHASE_1M)) |
+			 (0xccc << __ffs(RG_PHASE_1M)) |
 			 (0xccc << __ffs(RG_PHASE_RXIQ_1M)),
 			 RG_PHASE_1M | RG_PHASE_RXIQ_1M);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_0, RG_ALPHA_SEL, 2);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    CAL_IDX_WIFI2P4G_RXIQ);
+			CAL_IDX_WIFI2P4G_RXIQ);
 	usleep_range(250, 500);
 
 	ret = ssv6256_cal_wait(sd, RO_RXIQ_DONE, "RX IQ");
@@ -309,11 +309,11 @@ static int ssv6256_cal_5g_rxdc(struct ssv6256_dev *sd)
 	int ret;
 
 	ssv6256_reg_set_bits(sd, ADR_SX_5GB_CH_TABLE,
-			     FIELD_PREP(RG_SX5GB_CHANNEL, 100) |
+			 FIELD_PREP(RG_SX5GB_CHANNEL, 100) |
 			 RG_SX5GB_RFCH_MAP_EN,
 			 RG_SX5GB_CHANNEL | RG_SX5GB_RFCH_MAP_EN);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    CAL_IDX_WIFI5G_RXDC);
+			CAL_IDX_WIFI5G_RXDC);
 	usleep_range(100, 200);
 
 	ret = ssv6256_cal_wait(sd, RO_5G_DCCAL_DONE, "5 GHz RX DC");
@@ -327,11 +327,11 @@ static void ssv6256_cal_5g_tx_setup(struct ssv6256_dev *sd)
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_TXGAIN_PHYCTRL, 1);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_4, RG_TONE_SCALE, 0x80);
 	ssv6256_field_write(sd, ADR_5G_CALIBRATION_TIMER_GAIN_REGISTER,
-			    RG_5G_PGAG_TXCAL, 3);
+			RG_5G_PGAG_TXCAL, 3);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_9, RG_PRE_DC_AUTO, 1);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_3, RG_TX_IQCAL_TIME, 1);
 	ssv6256_reg_set_bits(sd, ADR_RF_D_CAL_TOP_3,
-			     (0xccc << __ffs(RG_PHASE_1M)) |
+			 (0xccc << __ffs(RG_PHASE_1M)) |
 			 (0xccc << __ffs(RG_PHASE_RXIQ_1M)),
 			 RG_PHASE_1M | RG_PHASE_RXIQ_1M);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_0, RG_ALPHA_SEL, 2);
@@ -343,14 +343,14 @@ static int ssv6256_cal_5g_txdc(struct ssv6256_dev *sd)
 	int ret;
 
 	ssv6256_reg_set_bits(sd, ADR_SX_5GB_CH_TABLE,
-			     FIELD_PREP(RG_SX5GB_CHANNEL, 100) |
+			 FIELD_PREP(RG_SX5GB_CHANNEL, 100) |
 			 RG_SX5GB_RFCH_MAP_EN,
 			 RG_SX5GB_CHANNEL | RG_SX5GB_RFCH_MAP_EN);
 	ssv6256_cal_5g_tx_setup(sd);
 	ssv6256_field_write(sd, ADR_5G_CALIBRATION_TIMER_GAIN_REGISTER,
-			    RG_5G_TX_GAIN_TXCAL, 2);
+			RG_5G_TX_GAIN_TXCAL, 2);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-			    CAL_IDX_WIFI5G_TXLO);
+			CAL_IDX_WIFI5G_TXLO);
 	usleep_range(250, 500);
 
 	ret = ssv6256_cal_wait(sd, RO_5G_TXDC_DONE, "5 GHz TX DC");
@@ -368,15 +368,15 @@ static int ssv6256_cal_5g_txiq(struct ssv6256_dev *sd)
 
 	for (i = 0; i < ARRAY_SIZE(cal_ch_5g); i++) {
 		ssv6256_field_write(sd, ADR_SX_5GB_CH_TABLE, RG_SX5GB_CHANNEL,
-				    cal_ch_5g[i]);
+				cal_ch_5g[i]);
 		ssv6256_field_write(sd, ADR_5G_CALIBRATION_TIMER_GAIN_REGISTER,
-				    RG_5G_TX_GAIN_TXCAL, 0);
+				RG_5G_TX_GAIN_TXCAL, 0);
 		ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-				    CAL_IDX_WIFI5G_TXIQ);
+				CAL_IDX_WIFI5G_TXIQ);
 		usleep_range(250, 500);
 		ret = ret ?: ssv6256_cal_wait(sd, RO_5G_TXIQ_DONE, "5 GHz TX IQ");
 		ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-				    CAL_IDX_NONE);
+				CAL_IDX_NONE);
 	}
 	return ret;
 }
@@ -389,26 +389,26 @@ static int ssv6256_cal_5g_rxiq(struct ssv6256_dev *sd)
 	ssv6256_field_write(sd, ADR_SX_5GB_CH_TABLE, RG_SX5GB_RFCH_MAP_EN, 1);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_TXGAIN_PHYCTRL, 1);
 	ssv6256_reg_set_bits(sd, ADR_5G_CALIBRATION_GAIN_REGISTER1,
-			     3 << __ffs(RG_5G_PGAG_RXIQCAL),
+			 3 << __ffs(RG_5G_PGAG_RXIQCAL),
 			 RG_5G_RFG_RXIQCAL | RG_5G_PGAG_RXIQCAL);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_4, RG_TONE_SCALE, 0x80);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_9, RG_PRE_DC_AUTO, 1);
 	ssv6256_field_write(sd, ADR_DIGITAL_ADD_ON_3, RG_TX_IQCAL_TIME, 1);
 	ssv6256_reg_set_bits(sd, ADR_RF_D_CAL_TOP_3,
-			     (0xccc << __ffs(RG_PHASE_1M)) |
+			 (0xccc << __ffs(RG_PHASE_1M)) |
 			 (0xccc << __ffs(RG_PHASE_RXIQ_1M)),
 			 RG_PHASE_1M | RG_PHASE_RXIQ_1M);
 	ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_0, RG_ALPHA_SEL, 2);
 
 	for (i = 0; i < ARRAY_SIZE(cal_ch_5g); i++) {
 		ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-				    CAL_IDX_WIFI5G_RXIQ);
+				CAL_IDX_WIFI5G_RXIQ);
 		usleep_range(250, 500);
 		ret = ret ?: ssv6256_cal_wait(sd, RO_5G_RXIQ_DONE, "5 GHz RX IQ");
 		ssv6256_field_write(sd, ADR_RF_D_CAL_TOP_0, RG_PHASE_STEP_VALUE,
-				    0xccc);
+				0xccc);
 		ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_CAL_INDEX,
-				    CAL_IDX_NONE);
+				CAL_IDX_NONE);
 	}
 	return ret;
 }
@@ -504,7 +504,7 @@ static void ssv6256_single_band_patch(struct ssv6256_dev *sd)
 	ssv6256_field_write(sd, ADR_SX_2_4GB_VCOBF, RG_SX_VCO_RXOB_AW, 1);
 	ssv6256_field_write(sd, ADR_SX_2_4GB_VCOBF, RG_SX_VCO_TXOB_AW, 1);
 	ssv6256_field_write(sd, ADR_SX_2_4GB_PFD_CHP, RG_SX_CP_ISEL_WF,
-			    xtal_cp_isel[SSV_XTAL]);
+			xtal_cp_isel[SSV_XTAL]);
 }
 
 /*
@@ -555,13 +555,13 @@ int ssv6256_set_channel(struct ssv6256_dev *sd, int channel, enum ssv6256_bandwi
 	/* a write that does not change the channel does not retune */
 	if (!ssv6256_field_read(sd, table, ch_mask, &cur) && cur == channel)
 		ssv6256_field_write(sd, table, ch_mask,
-				    channel != other ? other : other + 4);
+				channel != other ? other : other + 4);
 	usleep_range(100, 200);
 	ssv6256_field_write(sd, table, ch_mask, channel);
 
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_MODE, MODE_STANDBY);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_MODE,
-			    is_5g ? MODE_WIFI5G_RX : MODE_WIFI2P4G_RX);
+			is_5g ? MODE_WIFI5G_RX : MODE_WIFI2P4G_RX);
 	ssv6256_field_write(sd, ADR_MODE_REGISTER, RG_MODE_MANUAL, 0);
 	ssv6256_field_write(sd, ADR_WIFI_11GN_RX_REG_255, RG_SOFT_RST_N_11GN_RX, 1);
 	return ssv6256_field_write(sd, ADR_WIFI_11B_RX_REG_255,
@@ -580,9 +580,9 @@ int ssv6256_set_bandwidth(struct ssv6256_dev *sd, enum ssv6256_bandwidth bw)
 		add_on = RG_40M_MODE | (sec_above ? RG_LO_UP_CH : 0);
 	}
 	ssv6256_field_write(sd, ADR_MTX_MISC_EN,
-			    MTX_BLOCKTX_IGNORE_CCA_ED_SECONDARY, !ht40);
+			MTX_BLOCKTX_IGNORE_CCA_ED_SECONDARY, !ht40);
 	ssv6256_reg_set_bits(sd, ADR_WIFI_PHY_COMMON_SYS_REG, sys,
-			     RG_SYSTEM_BW | RG_PRIMARY_CH_SIDE);
+			 RG_SYSTEM_BW | RG_PRIMARY_CH_SIDE);
 	return ssv6256_reg_set_bits(sd, ADR_DIGITAL_ADD_ON_0, add_on,
 				RG_40M_MODE | RG_LO_UP_CH);
 }

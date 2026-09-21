@@ -258,7 +258,7 @@ static int ssv6256_upload_firmware(struct ssv6256_dev *sd, const struct firmware
 
 	/* the firmware needs the larger instruction memory */
 	ret = ssv6256_reg_set_bits(sd, ADR_SRAM_MODE, SRAM_MODE_ILM_160K,
-				   SRAM_MODE_ILM_160K);
+			       SRAM_MODE_ILM_160K);
 	blocks = DIV_ROUND_UP(sram, FW_CHECKSUM_BLOCK);
 	ret = ret ?: ssv6256_reg_write(sd, ADR_TX_SEG, blocks << 16);
 	ret = ret ?: ssv6256_start_mcu(sd);
@@ -380,10 +380,6 @@ static int ssv6256_sdio_probe(struct sdio_func *func)
 	ret = ssv6256_read_chip_id(sd);
 	if (ret)
 		goto err;
-	/*
-	 * The SSV6051 answers to the same SDIO identity, so the card is
-	 * only ours if the chip says one of ours back.
-	 */
 	if (strncmp(sd->chip_id, "SSV6006", 7) &&
 	    strncmp(sd->chip_id, "SSV6256", 7)) {
 		dev_dbg(sd->dev, "not this chip: %s\n", sd->chip_id);
@@ -411,6 +407,13 @@ static void ssv6256_sdio_remove(struct sdio_func *func)
 	struct ssv6256_dev *sd = sdio_get_drvdata(func);
 
 	ssv6256_mac_unregister(sd);
+	/*
+	 * Leave the chip as it was found.  Without this the next load
+	 * inherits a receive engine in the middle of a batch: the chip
+	 * says it has data and the data port answers with nothing.
+	 */
+	ssv6256_reg_write(sd, ADR_BRG_SW_RST, PLF_SW_RST);
+	usleep_range(50, 100);
 	sdio_claim_host(func);
 	sdio_disable_func(func);
 	sdio_release_host(func);

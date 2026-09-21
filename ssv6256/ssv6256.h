@@ -53,6 +53,29 @@
 #define SSV_TX_BUF_SIZE		16384
 /* Largest frame the chip hands back, including descriptor and padding. */
 #define SSV_RX_BUF_SIZE		4096
+/*
+ * With aggregation the chip hands over several frames in one read: it
+ * keeps filling a buffer of this size and only then interrupts, so the
+ * host pays one bus transaction for the lot.  The last frame may start
+ * just below the limit, so the buffer has room for one more.
+ */
+#define SSV_RX_AGGR_SIZE	0x6000
+#define SSV_RX_BATCH_MAX	(SSV_RX_AGGR_SIZE + SSV_RX_BUF_SIZE)
+/* just the word that announces a batch, read on its own */
+#define SSV_RX_HEAD_SIZE	8
+
+/*
+ * Batch buffers are allocated once and recycled: asking for one from
+ * the interrupt failed under memory pressure and took the traffic with
+ * it.  Six is enough for the receive thread to keep up.
+ */
+#define SSV_RX_BATCHES		12
+
+struct ssv6256_batch {
+	struct list_head node;
+	size_t len;
+	u8 *buf;
+};
 
 /* Channel width, and which side the secondary channel is on. */
 enum ssv6256_bandwidth {
@@ -261,6 +284,19 @@ struct ssv6256_dev {
 	wait_queue_head_t tx_wait;
 	struct task_struct *tx_thread;
 	u8 *tx_buf;		/* DMA-safe, used only by the TX thread */
+	u8 *rx_head;		/* DMA-safe, announces the next batch */
+	struct ssv6256_batch rx_batch[SSV_RX_BATCHES];
+	struct list_head rx_free;	/* buffers the interrupt may fill */
+	struct list_head rx_ready;	/* filled, waiting for the thread */
+	spinlock_t rx_lock;
+	bool rx_aggr;		/* the chip groups received frames */
+	struct task_struct *rx_thread;
+	wait_queue_head_t rx_wait;
+	u64 dbg_read, dbg_proc, dbg_copy, dbg_disp;
+	u32 dbg_bytes, dbg_batches, dbg_frames;
+	u32 rx_dropped;
+	unsigned int rx_bogus;
+	struct work_struct rx_resync_work;
 
 	/* frames handed to the chip, waiting for their transmit report */
 	spinlock_t status_lock;	/* protects status[] and status_next */
@@ -303,7 +339,7 @@ void ssv6256_pbuf_free(struct ssv6256_dev *sd, u32 addr);
 void ssv6256_beacon_timing(struct ssv6256_dev *sd, u16 interval, u8 dtim_period);
 int ssv6256_beacon_enable(struct ssv6256_dev *sd, bool enable);
 int ssv6256_beacon_set(struct ssv6256_dev *sd, const u8 *buf, size_t len,
-		       u16 dtim_offset);
+		   u16 dtim_offset);
 void ssv6256_beacon_release(struct ssv6256_dev *sd);
 
 /* mac.c */
@@ -314,21 +350,23 @@ void ssv6256_mac_unregister(struct ssv6256_dev *sd);
 
 /* tx.c */
 void ssv6256_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-		struct sk_buff *skb);
+	    struct sk_buff *skb);
 void ssv6256_tx_status(struct ssv6256_dev *sd, struct sk_buff *skb);
 void ssv6256_tx_kick(struct ssv6256_dev *sd);
 bool ssv6256_tx_queued(struct ssv6256_dev *sd);
 int ssv6256_ac_to_hwq(u16 ac);
 u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
-		     enum nl80211_band band);
+		 enum nl80211_band band);
 u32 ssv6256_fill_rate(struct ssv6256_tx_rate *tr, u8 code, u8 tries, u32 len,
-		      bool unicast, bool rts, bool last);
+		  bool unicast, bool rts, bool last);
 void ssv6256_tx_flush(struct ssv6256_dev *sd);
 int ssv6256_tx_init(struct ssv6256_dev *sd);
 void ssv6256_tx_deinit(struct ssv6256_dev *sd);
 
 /* rx.c */
-void ssv6256_rx_init(struct ssv6256_dev *sd);
+int ssv6256_rx_init(struct ssv6256_dev *sd);
+int ssv6256_rx_aggr_init(struct ssv6256_dev *sd);
+void ssv6256_rx_deinit(struct ssv6256_dev *sd);
 void ssv6256_rx_irq(struct ssv6256_dev *sd);
 
 /* ap.c */
@@ -346,13 +384,13 @@ int ssv6256_set_bandwidth(struct ssv6256_dev *sd, enum ssv6256_bandwidth bw);
 
 /* Read-modify-write of one register field, given its mask. */
 static inline int ssv6256_field_write(struct ssv6256_dev *sd, u32 addr, u32 mask,
-				      u32 val)
+				  u32 val)
 {
 	return ssv6256_reg_set_bits(sd, addr, val << __ffs(mask), mask);
 }
 
 static inline int ssv6256_field_read(struct ssv6256_dev *sd, u32 addr, u32 mask,
-				     u32 *val)
+				 u32 *val)
 {
 	u32 regval;
 	int ret;

@@ -75,7 +75,7 @@ void ssv6256_ap_update_beacon(struct ssv6256_dev *sd)
 	d->w3 = cpu_to_le32(FIELD_PREP(TXD3_WSID, 0xf));
 	/* the slowest rate of the band, once, with nobody acknowledging */
 	ssv6256_fill_rate(&d->rate[0], beacon_rate(sd), 1, skb->len + 4, false,
-			  false, true);
+		      false, true);
 	memcpy(buf + SSV_TX_DESC_LEN, skb->data, skb->len);
 
 	/* nothing changed and the chip already holds it: leave it alone */
@@ -92,7 +92,7 @@ void ssv6256_ap_update_beacon(struct ssv6256_dev *sd)
 		goto out;
 	}
 	ssv6256_beacon_timing(sd, vif->bss_conf.beacon_int,
-			      vif->bss_conf.dtim_period);
+			  vif->bss_conf.dtim_period);
 	kfree(sd->bcn_last);
 	sd->bcn_last = buf;
 	sd->bcn_last_len = len;
