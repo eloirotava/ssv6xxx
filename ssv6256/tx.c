@@ -33,8 +33,6 @@ void ssv6256_tx_kick(struct ssv6256_dev *sd)
 #define OFDM_PREAMBLE		20
 #define OFDM_PLCP_BITS		22
 #define OFDM_SYMBOL		4
-#define HT_SIFS			10
-#define HT_PREAMBLE		(8 + 8 + 4 + 8 + 4 + 4 + 6)	/* L-STF..HT-LTF + ext */
 #define ACK_LEN			14
 #define RTS_LEN			20
 #define CTS_LEN			14
@@ -43,11 +41,6 @@ void ssv6256_tx_kick(struct ssv6256_dev *sd)
 static const u16 cck_kbps[4] = { 1000, 2000, 5500, 11000 };
 static const u16 ofdm_kbps[8] = {
 	6000, 9000, 12000, 18000, 24000, 36000, 48000, 54000,
-};
-
-static const u16 ht_bits_per_symbol[2][8] = {
-	{ 26, 52, 78, 104, 156, 208, 234, 260 },	/* 20 MHz */
-	{ 54, 108, 162, 216, 324, 432, 486, 540 },	/* 40 MHz */
 };
 
 static u32 ssv6256_rate_kbps(u8 code)
@@ -76,62 +69,25 @@ static u32 ssv6256_legacy_airtime(u8 code, u32 len)
 	       OFDM_SYMBOL;
 }
 
-static u32 ssv6256_ht_airtime(u8 code, u32 len)
-{
-	bool ht40 = code & RATE_HT40;
-	u32 nsym = DIV_ROUND_UP(len * 8 + OFDM_PLCP_BITS,
-				ht_bits_per_symbol[ht40][FIELD_GET(RATE_INDEX, code)]);
-	u32 t = (code & RATE_SHORT) ? DIV_ROUND_UP((nsym * 18 + 4) / 5, 4) << 2 :
-				      nsym << 2;
-
-	return t + HT_PREAMBLE + HT_SIFS;
-}
-
-static u32 ssv6256_airtime(u8 code, u32 len)
-{
-	if (FIELD_GET(RATE_PHY_MODE, code) == RATE_PHY_HT)
-		return ssv6256_ht_airtime(code, len);
-	return ssv6256_legacy_airtime(code, len);
-}
-
 /* Rate the peer answers on: the vendor's fixed mapping of data rates. */
 static u8 ssv6256_ctrl_rate(u8 code)
 {
 	u8 idx = FIELD_GET(RATE_INDEX, code);
 	u8 ofdm;
 
-	switch (FIELD_GET(RATE_PHY_MODE, code)) {
-	case RATE_PHY_CCK:
+	if (FIELD_GET(RATE_PHY_MODE, code) == RATE_PHY_CCK)
 		return FIELD_PREP(RATE_PHY_MODE, RATE_PHY_CCK) |
 		       (code & RATE_SHORT);
-	case RATE_PHY_OFDM:
-		ofdm = idx <= 2 ? 0 : (idx <= 4 ? 2 : 4);
-		break;
-	default:
-		ofdm = idx <= 1 ? 0 : (idx <= 3 ? 2 : 4);
-		break;
-	}
+	ofdm = idx <= 2 ? 0 : (idx <= 4 ? 2 : 4);
 	return FIELD_PREP(RATE_PHY_MODE, RATE_PHY_OFDM) |
 	       FIELD_PREP(RATE_INDEX, ofdm);
 }
 
 /* Translate one mac80211 rate entry into the chip's rate byte. */
 u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
-		 enum nl80211_band band)
+		     enum nl80211_band band)
 {
 	u8 code;
-
-	if (r->flags & IEEE80211_TX_RC_MCS) {
-		code = FIELD_PREP(RATE_PHY_MODE, RATE_PHY_HT) |
-		       FIELD_PREP(RATE_INDEX, r->idx & 7);
-		if (r->flags & IEEE80211_TX_RC_SHORT_GI)
-			code |= RATE_SHORT;
-		if (r->flags & IEEE80211_TX_RC_40_MHZ_WIDTH)
-			code |= RATE_HT40;
-		if (r->flags & IEEE80211_TX_RC_GREEN_FIELD)
-			code |= RATE_GREENFIELD;
-		return code;
-	}
 
 	/* only the 2.4 GHz band lists the four CCK rates first */
 	if (band == NL80211_BAND_2GHZ) {
@@ -154,28 +110,21 @@ u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
  * series lends to the 802.11 Duration/ID field.
  */
 u32 ssv6256_fill_rate(struct ssv6256_tx_rate *tr, u8 code, u8 tries, u32 len,
-		  bool unicast, bool rts, bool last)
+		      bool unicast, bool rts, bool last)
 {
 	u8 ctrl = ssv6256_ctrl_rate(code);
-	u32 frame = ssv6256_airtime(code, len);
-	u32 ack = 0, nav = 0, dl_length = 0;
+	u32 frame = ssv6256_legacy_airtime(code, len);
+	u32 ack = 0, nav = 0;
 
 	if (unicast)
 		ack = ssv6256_legacy_airtime(ctrl, ACK_LEN);
 	if (rts)
 		nav = frame + ack + ssv6256_legacy_airtime(ctrl, CTS_LEN);
-	if (FIELD_GET(RATE_PHY_MODE, code) == RATE_PHY_HT) {
-		/* legacy L-SIG length spoofing the HT PPDU duration */
-		u32 l = ((frame - HT_SIFS - (6 + 20)) + 3) >> 2;
-
-		dl_length = l + (l << 1) - 3;
-	}
 
 	tr->w0 = cpu_to_le32(FIELD_PREP(TXR0_DRATE, code) |
 			     FIELD_PREP(TXR0_CRATE, ctrl) |
 			     FIELD_PREP(TXR0_RTS_CTS_NAV, nav));
-	tr->w1 = cpu_to_le32(FIELD_PREP(TXR1_DL_LENGTH, dl_length) |
-			     FIELD_PREP(TXR1_TRY_CNT, tries) |
+	tr->w1 = cpu_to_le32(FIELD_PREP(TXR1_TRY_CNT, tries) |
 			     FIELD_PREP(TXR1_ACK_POLICY, unicast ? 0 : 1) |
 			     FIELD_PREP(TXR1_DO_RTS_CTS,
 					rts ? IEEE80211_TX_RC_USE_RTS_CTS : 0) |
@@ -220,7 +169,7 @@ static struct sk_buff *ssv6256_status_take(struct ssv6256_dev *sd, u8 slot)
 }
 
 static void ssv6256_tx_done(struct ssv6256_dev *sd, struct sk_buff *skb, bool acked,
-			int tries)
+			    int tries)
 {
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
@@ -265,13 +214,13 @@ void ssv6256_tx_status(struct ssv6256_dev *sd, struct sk_buff *rpt)
 }
 
 static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
-			   struct ieee80211_sta *sta, int hwq)
+			       struct ieee80211_sta *sta, int hwq)
 {
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
 	struct ssv6256_sta *ss = NULL;
 	struct ssv6256_tx_desc *d;
-	bool unicast, qos, ht = false, rts;
+	bool unicast, qos, rts;
 	u32 len, ack = 0, tmp;
 	int hdrlen, i, slot = -1;
 	u8 wsid = 0xf;
@@ -303,7 +252,7 @@ static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
 			if (i == 0) {
 				/* no rate control yet: fall back to 1 Mbps */
 				ack = ssv6256_fill_rate(&d->rate[0],
-						    info->band == NL80211_BAND_2GHZ ?
+							info->band == NL80211_BAND_2GHZ ?
 						    0 : FIELD_PREP(RATE_PHY_MODE,
 								   RATE_PHY_OFDM),
 						    15,
@@ -314,10 +263,8 @@ static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
 			break;
 		}
 		code = ssv6256_rate_code(sd, r, info->band);
-		if (i == 0 && FIELD_GET(RATE_PHY_MODE, code) == RATE_PHY_HT)
-			ht = true;
 		tmp = ssv6256_fill_rate(&d->rate[i], code, r->count,
-				    skb->len - SSV_TX_DESC_LEN + FCS_LEN,
+					skb->len - SSV_TX_DESC_LEN + FCS_LEN,
 				    unicast, rts, last);
 		if (i == 0)
 			ack = tmp;
@@ -332,7 +279,6 @@ static bool ssv6256_build_desc(struct ssv6256_dev *sd, struct sk_buff *skb,
 			    FIELD_PREP(TXD0_C_TYPE, SSV_CTYPE_TXREQ) |
 			    TXD0_F80211 |
 			    (qos ? TXD0_QOS : 0) |
-			    (ht ? TXD0_HT : 0) |
 			    (ieee80211_has_a4(hdr->frame_control) ?
 			     TXD0_USE_4ADDR : 0) |
 			    (ieee80211_has_morefrags(hdr->frame_control) ?
@@ -467,7 +413,7 @@ static int ssv6256_tx_thread(void *data)
 }
 
 void ssv6256_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-	    struct sk_buff *skb)
+		struct sk_buff *skb)
 {
 	struct ssv6256_dev *sd = hw->priv;
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);

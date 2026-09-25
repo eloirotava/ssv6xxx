@@ -3,10 +3,16 @@
 Driver para o mac80211, escrito do zero, para os chips da iComm (South
 Silicon Valley) usados em TV boxes e placas embarcadas:
 
-- **SSV6051**, vendido também como **SSV6030**: 802.11b/g/n em 2,4 GHz,
-  HT20 com short GI (até MCS7), agregação no envio e na recepção;
-- **SSV6256**: acrescenta 5 GHz e HT40; recebe agregados (o MAC responde
-  aos Block Ack sozinho) e não agrega no envio.
+- **SSV6051**, vendido também como **SSV6030**: 802.11b/g em 2,4 GHz;
+- **SSV6256**: 802.11a/b/g em 2,4 e 5 GHz.
+
+Os dois rodam **só em legacy**, até 54 Mbit/s e canais de 20 MHz, de
+propósito: sem HT (802.11n), sem HT40 e sem agregação. Nestes chips o
+HT fica pior, não melhor. No SSV6256, na mesma caixa e no mesmo ponto
+de acesso, a descida caiu de 23 Mbit/s em legacy para 5 Mbit/s com HT,
+com o TCP retransmitindo sem parar: o chip perde quadros recebidos em
+HT. O driver do fabricante chega ao mesmo lugar: ele também se associa
+em legacy.
 
 Os dois respondem à **mesma identidade SDIO** (0x3030:0x3030), então um
 driver só atende aos dois: na inicialização, cada chip é perguntado se
@@ -32,8 +38,7 @@ evita o conflito que havia com dois módulos disputando o mesmo aparelho.
 Cada pasta de chip tem a mesma divisão: `sdio.c` (barramento e
 firmware), `hw.c` (inicialização, canal, calibração), `mac.c`
 (interface com o mac80211), `tx.c`/`rx.c`, `ap.c` (hotspot); o SSV6051
-tem ainda `rc.c` (controle de taxa) e `ampdu.c` (agregação no envio), e
-o SSV6256 tem `phy.c`.
+tem ainda `rc.c` (controle de taxa), e o SSV6256 tem `phy.c`.
 
 ## Compilar
 
@@ -54,42 +59,31 @@ sudo find /lib/modules/$(uname -r) -name 'ssv6051*.ko*' -o -name 'ssv6256*.ko*' 
 
 ## Desempenho medido
 
-Medições de setembro de 2026, com `iperf3` de dez segundos em cada
-sentido. Elas dizem mais sobre o ambiente que sobre o driver: o 2,4 GHz
-do lab tinha 25 redes no canal, e em casa o canal 1 ficou 70% ocupado a
-noite toda.
+Setembro de 2026, TCP, poucos segundos em cada sentido:
 
-| chip, ponto de acesso | subida | descida |
+| chip, driver, ponto de acesso | descida | subida |
 |---|---|---|
-| SSV6051, 2,4 GHz canal 1, −36 dBm | 13 a 15 Mbit/s | 9 a 11 |
-| SSV6256, 5 GHz canal 149 HT40, −20 dBm | 17 a 19 Mbit/s | 13 a 14 |
+| SSV6256, este driver (legacy), 5 GHz, −47 dBm | 23,4 Mbit/s | 20,1 |
+| SSV6256, este driver com HT40 (versão anterior) | 5,0 Mbit/s | 21,8 |
+| SSV6256, driver do fabricante (cdhigh), mesmo AP | 20,3 Mbit/s | 15,7 |
+| SSV6051, este driver (legacy), 2,4 GHz, −37 dBm | 5 Mbit/s | 6 |
 
-Para comparação, no mesmo rádio de 2,4 GHz e no mesmo horário, um
-celular Wi-Fi 6 de duas antenas fez 12 Mbit/s de descida: ali o teto era
-do ar, não do driver.
+O SSV6051 foi medido em outro lugar e com outro método (`nc` contra um
+roteador DD-WRT, com um canal de 2,4 GHz disputado), então não se
+compara às linhas do SSV6256.
 
-O que rendeu no SSV6051, e está aqui: o laço de envio dorme até o chip
-avisar que há espaço, em vez de perguntar a cada volta (as consultas
-caíram de ~430 para ~10 a cada 256 voltas), e o bit de QoS do chip passa
-a ser ligado depois da associação, coisa que o driver do fabricante
-também não faz.
-
-O que **não** está aqui, por não ser estável: a leitura dos quadros
-recebidos em lote no SSV6256. Ela dobra a descida (13,6 → 27 Mbit/s),
-mas só inicia corretamente em cerca de um terço das cargas do módulo, e
-às vezes trava o aparelho. Fica no ramo `lote-recepcao`, com as
-medições e as hipóteses já descartadas registradas nos commits.
+No SSV6256, a descida depende também de o chip entregar os quadros
+recebidos **em lote**, vários numa leitura só do SDIO. Sem o lote, mesmo
+em legacy, ela cai para 5 Mbit/s. O lote vem sempre ligado; quando o
+chip não aceita o formato, o driver volta a ler um quadro por vez.
 
 ## Limitações conhecidas
 
 - Cliente e hotspot não funcionam ao mesmo tempo: o chip só aceita um
   endereço MAC.
 - Sem power save 802.11.
-- SSV6051: sem HT40 (o rádio é de 20 MHz); confirmação real de envio só
-  para gerência, EAPOL e agregados.
-- SSV6256: não agrega no envio — o chip transmite o agregado, o outro
-  lado responde com Block Ack e o chip ignora a resposta; o driver do
-  fabricante também não agrega.
+- Só legacy: até 54 Mbit/s, 20 MHz, sem 802.11n (veja acima o porquê).
+- SSV6051: confirmação real de envio só para gerência e EAPOL.
 - Partes do código e as tabelas vêm do driver do fabricante, cujos
   cabeçalhos citam GPL versão 3 ou posterior; para o kernel oficial isso
   precisaria ser esclarecido com a iComm.

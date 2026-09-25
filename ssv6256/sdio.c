@@ -258,7 +258,7 @@ static int ssv6256_upload_firmware(struct ssv6256_dev *sd, const struct firmware
 
 	/* the firmware needs the larger instruction memory */
 	ret = ssv6256_reg_set_bits(sd, ADR_SRAM_MODE, SRAM_MODE_ILM_160K,
-			       SRAM_MODE_ILM_160K);
+				   SRAM_MODE_ILM_160K);
 	blocks = DIV_ROUND_UP(sram, FW_CHECKSUM_BLOCK);
 	ret = ret ?: ssv6256_reg_write(sd, ADR_TX_SEG, blocks << 16);
 	ret = ret ?: ssv6256_start_mcu(sd);
@@ -380,6 +380,10 @@ static int ssv6256_sdio_probe(struct sdio_func *func)
 	ret = ssv6256_read_chip_id(sd);
 	if (ret)
 		goto err;
+	/*
+	 * The SSV6051 answers to the same SDIO identity, so the card is
+	 * only ours if the chip says one of ours back.
+	 */
 	if (strncmp(sd->chip_id, "SSV6006", 7) &&
 	    strncmp(sd->chip_id, "SSV6256", 7)) {
 		dev_dbg(sd->dev, "not this chip: %s\n", sd->chip_id);

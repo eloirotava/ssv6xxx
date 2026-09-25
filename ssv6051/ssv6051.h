@@ -107,9 +107,7 @@ enum ssv6051_cmd_id {
 };
 
 enum ssv6051_event {
-	SSV_EVT_NO_BA = 1,
 	SSV_EVT_RC_MPDU_REPORT = 2,
-	SSV_EVT_RC_AMPDU_REPORT = 3,
 	SSV_EVT_TXLOOPBK_RESULT = 10,
 };
 
@@ -147,8 +145,6 @@ enum ssv6051_wsid_op {
 #define TXD2_TX_REPORT		BIT(16)
 #define TXD2_TX_BURST		BIT(17)
 #define TXD2_ACK_POLICY		GENMASK(19, 18)
-#define TXD2_AGGREGATION	BIT(20)
-#define TXD2_AGG_MARK		GENMASK(23, 21)
 #define TXD2_RTS_CTS		GENMASK(25, 24)
 #define TXD3_PAYLOAD_OFFSET	GENMASK(7, 0)
 #define TXD3_WSID		GENMASK(22, 19)
@@ -161,14 +157,7 @@ enum ssv6051_wsid_op {
 
 #define SSV_TX_MAX_RATES	3
 
-/* One step of the chip's retry chain (aggregates) */
-#define RCP0_COUNT		GENMASK(3, 0)
-#define RCP0_DRATE		GENMASK(9, 4)
-#define RCP0_CRATE		GENMASK(15, 10)
-#define RCP0_RTS_CTS_NAV	GENMASK(31, 16)
-#define RCP1_CONSUME_TIME	GENMASK(9, 0)
-#define RCP1_DL_LENGTH		GENMASK(21, 10)
-
+/* One step of the chip's retry chain; the driver leaves it zeroed */
 struct ssv6051_rc_retry {
 	__le32 w0;
 	__le32 w1;
@@ -197,7 +186,6 @@ struct ssv6051_rx_desc {
 	__le32 w3;
 };
 
-#define RXPHY1_AGGREGATE	BIT(18)
 #define RXPHY4_RPCI		GENMASK(7, 0)
 
 struct ssv6051_rxphy_info {
@@ -233,8 +221,8 @@ struct ssv6051_tx_rate_rpt {
 struct ssv6051_rc_report {
 	u8 wsid;
 	struct ssv6051_tx_rate_rpt rates[SSV_TX_MAX_RATES];
-	__le16 ampdu_len;
-	__le16 ampdu_ack_len;
+	__le16 frames;		/* sent since the last report */
+	__le16 acked;
 	__le32 ack_signal;
 } __packed;
 
@@ -274,21 +262,18 @@ struct ssv6051_iqk_cfg {
 /* Rate table: index == chip rate index */
 #define SSV_RATE_CCK_SHORT	4	/* 2/5.5/11 Mbps short preamble: 4..6 */
 #define SSV_RATE_OFDM		7	/* 6..54 Mbps: 7..14 */
-#define SSV_RATE_MCS_LGI	15	/* MCS0..7: 15..22 */
-#define SSV_RATE_MCS_SGI	23	/* MCS0..7 short GI: 23..30 */
-#define SSV_NUM_RATES		31
+#define SSV_NUM_RATES		15
 
 enum ssv6051_phy {
 	SSV_PHY_CCK,
 	SSV_PHY_OFDM,
-	SSV_PHY_HT,
 };
 
 struct ssv6051_rate {
 	u32 kbps;
 	u8 phy;
 	u8 ctrl;	/* rate index used for ACK/CTS */
-	u8 dot11;	/* sband bitrate index or MCS */
+	u8 dot11;	/* sband bitrate index */
 };
 
 extern const struct ssv6051_rate ssv6051_rates[SSV_NUM_RATES];
@@ -304,34 +289,11 @@ struct ssv6051_rc {
 	u8 win_idx;		/* rate index used by the current window */
 	u8 win_left;
 	u32 windows;
-	u32 agg_count;
-};
-
-#define SSV_AGG_TIDS		8
-#define SSV_AGG_WINDOW		64
-
-enum ssv6051_agg_state {
-	SSV_AGG_OFF,
-	SSV_AGG_STARTING,
-	SSV_AGG_OPERATIONAL,
-};
-
-/* TX aggregation state of one TID (protected by ssv6051_dev.sta_lock) */
-struct ssv6051_agg {
-	u8 state;
-	u8 next_id;		/* tags the MPDUs of each aggregate */
-	u16 buf_size;
-	unsigned long retry_start;
-	struct sk_buff_head q;
-	struct sk_buff_head retry;	/* sorted by sequence number */
-	struct sk_buff_head inflight;	/* in send order */
-	u8 tries[SSV_AGG_WINDOW];
 };
 
 struct ssv6051_sta {
 	int wsid;
 	struct ssv6051_rc rc;
-	struct ssv6051_agg agg[SSV_AGG_TIDS];
 };
 
 struct ssv6051_dev {
@@ -373,9 +335,6 @@ struct ssv6051_dev {
 	int free_frames[HW_TXQ_NUM];
 	bool res_valid;
 	bool queues_stopped;
-	/* frames held in aggregation queues, and a TX thread poke for them */
-	atomic_t agg_queued;
-	bool agg_kick;
 	bool res_irq;		/* waiting to hear that there is room */
 	bool room_kick;		/* ... and the chip said so */
 
@@ -385,8 +344,7 @@ struct ssv6051_dev {
 
 	/* association */
 	struct mutex mutex;
-	struct mutex agg_mutex;	/* TX thread vs. station removal */
-	spinlock_t sta_lock;
+	spinlock_t sta_lock;	/* rate control state */
 	struct ieee80211_vif *vif;
 
 	/* access point: beacon kept by the chip, group frames after DTIM */
@@ -399,8 +357,6 @@ struct ssv6051_dev {
 	struct delayed_work dtim_work;
 	struct ieee80211_sta __rcu *sta[SSV_NUM_STA];
 	bool short_preamble;
-	struct ieee80211_sta *rx_ba_sta;	/* owner of the single RX BA session */
-	u16 rx_ba_tid;
 	u32 cca_control;
 	u32 cca_1;
 };
@@ -451,11 +407,10 @@ void ssv6051_wsid_del(struct ssv6051_dev *sd, int wsid, const u8 *addr);
 void ssv6051_update_ctrl_rates(struct ssv6051_dev *sd, u32 basic_rates);
 void ssv6051_rf_enable(struct ssv6051_dev *sd, bool on);
 void ssv6051_scan_cca(struct ssv6051_dev *sd, bool scanning);
-void ssv6051_rx_ba_session(struct ssv6051_dev *sd, const u8 *ta, u16 tid, u16 ssn);
 
 /* tx.c */
+void ssv6051_tx_room_wanted(struct ssv6051_dev *sd, bool on);
 u32 ssv6051_legacy_airtime(const struct ssv6051_rate *r, u32 len, bool short_pre);
-u32 ssv6051_ht_airtime(u8 mcs, u32 len, bool sgi);
 int ssv6051_tid_to_hwq(u8 tid);
 bool ssv6051_tx_budget(struct ssv6051_dev *sd, int hwq, size_t len);
 int ssv6051_tx_write(struct ssv6051_dev *sd, int hwq, size_t len);
@@ -468,22 +423,7 @@ void ssv6051_tx_flush(struct ssv6051_dev *sd);
 /* rx.c */
 void ssv6051_rx_irq(struct ssv6051_dev *sd);
 
-/* ampdu.c */
-void ssv6051_agg_init(struct ssv6051_sta *ss);
-void ssv6051_tx_kick(struct ssv6051_dev *sd);
-void ssv6051_tx_room_wanted(struct ssv6051_dev *sd, bool on);
-void ssv6051_agg_flush(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 tid);
-bool ssv6051_agg_tx(struct ssv6051_dev *sd, struct ieee80211_sta *sta, struct sk_buff *skb);
-bool ssv6051_agg_pump(struct ssv6051_dev *sd, bool *blocked);
-void ssv6051_agg_ba(struct ssv6051_dev *sd, struct sk_buff *skb);
-void ssv6051_agg_no_ba(struct ssv6051_dev *sd, const u8 *data, size_t len);
-int ssv6051_agg_action(struct ssv6051_dev *sd, struct ieee80211_vif *vif,
-		       struct ieee80211_ampdu_params *params);
-
 /* rc.c */
-bool ssv6051_rc_agg_chain(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 *chain);
-void ssv6051_rc_agg_result(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 rate,
-			   int frames, int acked, int tries);
 void ssv6051_rc_init(struct ssv6051_dev *sd, struct ieee80211_sta *sta);
 u8 ssv6051_rc_get(struct ssv6051_dev *sd, struct ssv6051_sta *ss, bool *report);
 void ssv6051_rc_report(struct ssv6051_dev *sd, const struct ssv6051_rc_report *rpt);

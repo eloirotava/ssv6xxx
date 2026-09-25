@@ -58,7 +58,7 @@ static int ssv6xxx_probe(struct sdio_func *func,
 	for (i = 0; i < ARRAY_SIZE(ssv6xxx_chips); i++) {
 		ret = ssv6xxx_chips[i]->probe(func);
 		if (!ret) {
-			dev_info(&func->dev, "%s\n", ssv6xxx_chips[i]->name);
+			dev_dbg(&func->dev, "%s\n", ssv6xxx_chips[i]->name);
 			ssv6xxx_reboot_func = func;
 			return 0;
 		}

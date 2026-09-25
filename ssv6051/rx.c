@@ -68,15 +68,12 @@ static void ssv6051_rx_event(struct ssv6051_dev *sd, struct sk_buff *skb)
 		sd->cali_state = le32_to_cpu(ev->seq) == 0 ? 1 : -1;
 		wake_up(&sd->cali_wait);
 		break;
-	case SSV_EVT_NO_BA:
-		ssv6051_agg_no_ba(sd, ev->data, skb->len - sizeof(*ev));
-		break;
 	case SSV_EVT_RC_MPDU_REPORT:
 		if (skb->len >= sizeof(*ev) + sizeof(struct ssv6051_rc_report))
 			ssv6051_rc_report(sd, (struct ssv6051_rc_report *)ev->data);
 		break;
 	default:
-		/* watchdog ticks, AMPDU/BA notifications, logs */
+		/* watchdog ticks, logs */
 		break;
 	}
 	dev_kfree_skb(skb);
@@ -89,15 +86,9 @@ static void ssv6051_rx_rate(struct ieee80211_rx_status *rxs, unsigned int rate)
 	if (rate >= SSV_NUM_RATES)
 		rate = 0;
 	r = &ssv6051_rates[rate];
-	if (r->phy == SSV_PHY_HT) {
-		rxs->encoding = RX_ENC_HT;
-		if (rate >= SSV_RATE_MCS_SGI)
-			rxs->enc_flags |= RX_ENC_FLAG_SHORT_GI;
-	} else {
-		rxs->encoding = RX_ENC_LEGACY;
-		if (rate >= SSV_RATE_CCK_SHORT && rate < SSV_RATE_OFDM)
-			rxs->enc_flags |= RX_ENC_FLAG_SHORTPRE;
-	}
+	rxs->encoding = RX_ENC_LEGACY;
+	if (rate >= SSV_RATE_CCK_SHORT && rate < SSV_RATE_OFDM)
+		rxs->enc_flags |= RX_ENC_FLAG_SHORTPRE;
 	rxs->rate_idx = r->dot11;
 }
 
@@ -130,17 +121,9 @@ static void ssv6051_rx_frame(struct ssv6051_dev *sd, struct sk_buff *skb)
 		rpci = le32_get_bits(phy->w4, RXPHY4_RPCI);
 	}
 	rxs->signal = -min(rpci, 88);
-	if (le32_get_bits(phy->w1, RXPHY1_AGGREGATE))
-		rxs->flag |= RX_FLAG_NO_SIGNAL_VAL;
 
 	skb_pull(skb, SSV_RX_DESC_LEN);
 	hdr = (struct ieee80211_hdr *)skb->data;
-	/* Block Acks for our aggregates end with the firmware's note */
-	if (ieee80211_is_back(hdr->frame_control)) {
-		ssv6051_agg_ba(sd, skb);
-		dev_kfree_skb(skb);
-		return;
-	}
 	skb_trim(skb, skb->len - RX_PINFO_PAD);
 
 	/* the chip clock is not the TSF; keep mac80211's beacon timing sane */

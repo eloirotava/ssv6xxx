@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * mac80211 driver for the iComm SSV6256 SDIO 802.11a/b/g/n chip
- * ("Turismo" family: 2.4 and 5 GHz, HT20/40, one spatial stream).
+ * mac80211 driver for the iComm SSV6256 SDIO chip ("Turismo" family),
+ * run as 802.11a/b/g only: 2.4 and 5 GHz, 20 MHz, up to 54 Mbit/s.
  *
  * Hardware interface derived from the iComm vendor driver:
  * Copyright (c) 2015 South Silicon Valley Microelectronics Inc.
@@ -67,7 +67,7 @@
 /*
  * Batch buffers are allocated once and recycled: asking for one from
  * the interrupt failed under memory pressure and took the traffic with
- * it.  Six is enough for the receive thread to keep up.
+ * it.  Twelve is enough for the receive thread to keep up.
  */
 #define SSV_RX_BATCHES		12
 
@@ -75,13 +75,6 @@ struct ssv6256_batch {
 	struct list_head node;
 	size_t len;
 	u8 *buf;
-};
-
-/* Channel width, and which side the secondary channel is on. */
-enum ssv6256_bandwidth {
-	SSV_BW_20,
-	SSV_BW_40_ABOVE,
-	SSV_BW_40_BELOW,
 };
 
 /*
@@ -125,13 +118,10 @@ enum ssv6256_host_cmd {
  * information of a received frame.
  */
 #define RATE_INDEX		GENMASK(2, 0)
-#define RATE_GREENFIELD		BIT(3)
-#define RATE_SHORT		BIT(4)	/* short preamble, or short GI in HT */
-#define RATE_HT40		BIT(5)
+#define RATE_SHORT		BIT(4)	/* short preamble */
 #define RATE_PHY_MODE		GENMASK(7, 6)
 #define  RATE_PHY_CCK		0
 #define  RATE_PHY_OFDM		2
-#define  RATE_PHY_HT		3
 
 /*
  * Wire formats: little-endian 32-bit words.  Field masks are named
@@ -142,7 +132,6 @@ enum ssv6256_host_cmd {
 #define TXD0_C_TYPE		GENMASK(18, 16)
 #define TXD0_F80211		BIT(19)
 #define TXD0_QOS		BIT(20)
-#define TXD0_HT			BIT(21)
 #define TXD0_USE_4ADDR		BIT(22)
 #define TXD0_SECURITY		BIT(27)
 #define TXD0_MORE_DATA		BIT(28)
@@ -151,7 +140,6 @@ enum ssv6256_host_cmd {
 #define TXD2_FRAG		BIT(8)
 #define TXD2_UNICAST		BIT(9)
 #define TXD2_HDR_LEN		GENMASK(15, 10)
-#define TXD2_AGGR		GENMASK(21, 20)
 #define TXD2_BSSIDX		GENMASK(25, 24)
 #define TXD3_PKT_RUN_NO		GENMASK(15, 8)
 #define TXD3_WSID		GENMASK(22, 19)
@@ -185,10 +173,9 @@ struct ssv6256_tx_desc {
 	__le32 w2;
 	__le32 w3;
 	__le32 nav12;		/* NAV of rate series 1 and 2 */
-	__le32 w5;		/* NAV of series 3, report mode, AMPDU SSN */
+	__le32 w5;		/* NAV of series 3, report mode */
 	struct ssv6256_tx_rate rate[SSV_TX_MAX_RATES];
-	__le32 ampdu[3];
-	__le32 dummy[3];
+	__le32 rsvd[6];
 };
 
 /* RX descriptor and PHY information in front of every received frame */
@@ -206,7 +193,6 @@ struct ssv6256_rx_desc {
 };
 
 #define RXPHY0_RATE		GENMASK(23, 16)
-#define RXPHY0_AGGREGATE	BIT(26)
 #define RXPHY1_RSSI		GENMASK(23, 16)
 #define RXPHY1_SNR		GENMASK(31, 24)
 
@@ -270,7 +256,6 @@ struct ssv6256_dev {
 	bool dual_band;		/* the part also covers 5 GHz */
 	u8 mac[ETH_ALEN];
 	int channel;
-	enum ssv6256_bandwidth bw;
 	bool short_preamble;
 
 	struct ieee80211_sta __rcu *sta[SSV_NUM_STA];
@@ -292,9 +277,6 @@ struct ssv6256_dev {
 	bool rx_aggr;		/* the chip groups received frames */
 	struct task_struct *rx_thread;
 	wait_queue_head_t rx_wait;
-	u64 dbg_read, dbg_proc, dbg_copy, dbg_disp;
-	u32 dbg_bytes, dbg_batches, dbg_frames;
-	u32 rx_dropped;
 	unsigned int rx_bogus;
 	struct work_struct rx_resync_work;
 
@@ -339,7 +321,7 @@ void ssv6256_pbuf_free(struct ssv6256_dev *sd, u32 addr);
 void ssv6256_beacon_timing(struct ssv6256_dev *sd, u16 interval, u8 dtim_period);
 int ssv6256_beacon_enable(struct ssv6256_dev *sd, bool enable);
 int ssv6256_beacon_set(struct ssv6256_dev *sd, const u8 *buf, size_t len,
-		   u16 dtim_offset);
+		       u16 dtim_offset);
 void ssv6256_beacon_release(struct ssv6256_dev *sd);
 
 /* mac.c */
@@ -350,15 +332,15 @@ void ssv6256_mac_unregister(struct ssv6256_dev *sd);
 
 /* tx.c */
 void ssv6256_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
-	    struct sk_buff *skb);
+		struct sk_buff *skb);
 void ssv6256_tx_status(struct ssv6256_dev *sd, struct sk_buff *skb);
 void ssv6256_tx_kick(struct ssv6256_dev *sd);
 bool ssv6256_tx_queued(struct ssv6256_dev *sd);
 int ssv6256_ac_to_hwq(u16 ac);
 u8 ssv6256_rate_code(struct ssv6256_dev *sd, const struct ieee80211_tx_rate *r,
-		 enum nl80211_band band);
+		     enum nl80211_band band);
 u32 ssv6256_fill_rate(struct ssv6256_tx_rate *tr, u8 code, u8 tries, u32 len,
-		  bool unicast, bool rts, bool last);
+		      bool unicast, bool rts, bool last);
 void ssv6256_tx_flush(struct ssv6256_dev *sd);
 int ssv6256_tx_init(struct ssv6256_dev *sd);
 void ssv6256_tx_deinit(struct ssv6256_dev *sd);
@@ -379,18 +361,17 @@ void ssv6256_ap_stop(struct ssv6256_dev *sd);
 /* phy.c */
 int ssv6256_phy_init(struct ssv6256_dev *sd);
 int ssv6256_phy_enable(struct ssv6256_dev *sd, bool enable);
-int ssv6256_set_channel(struct ssv6256_dev *sd, int channel, enum ssv6256_bandwidth bw);
-int ssv6256_set_bandwidth(struct ssv6256_dev *sd, enum ssv6256_bandwidth bw);
+int ssv6256_set_channel(struct ssv6256_dev *sd, int channel);
 
 /* Read-modify-write of one register field, given its mask. */
 static inline int ssv6256_field_write(struct ssv6256_dev *sd, u32 addr, u32 mask,
-				  u32 val)
+				      u32 val)
 {
 	return ssv6256_reg_set_bits(sd, addr, val << __ffs(mask), mask);
 }
 
 static inline int ssv6256_field_read(struct ssv6256_dev *sd, u32 addr, u32 mask,
-				 u32 *val)
+				     u32 *val)
 {
 	u32 regval;
 	int ret;

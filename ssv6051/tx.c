@@ -30,13 +30,9 @@ static const u8 ac_to_hwq[IEEE80211_NUM_ACS] = { 3, 2, 1, 0 };
 #define OFDM_PREAMBLE		20
 #define OFDM_PLCP_BITS		22
 #define OFDM_SYMBOL		4
-#define HT_SIFS			10
-#define HT_PREAMBLE		(8 + 8 + 4 + 8 + 4 + 4 + 6)	/* L-STF..HT-LTF + ext */
 #define ACK_LEN			14
 #define RTS_LEN			20
 #define CTS_LEN			14
-
-static const u16 ht_bits_per_symbol[8] = { 26, 52, 78, 104, 156, 208, 234, 260 };
 
 u32 ssv6051_legacy_airtime(const struct ssv6051_rate *r, u32 len, bool short_pre)
 {
@@ -54,14 +50,6 @@ u32 ssv6051_legacy_airtime(const struct ssv6051_rate *r, u32 len, bool short_pre
 	       OFDM_SYMBOL;
 }
 
-u32 ssv6051_ht_airtime(u8 mcs, u32 len, bool sgi)
-{
-	u32 nsym = DIV_ROUND_UP(len * 8 + OFDM_PLCP_BITS, ht_bits_per_symbol[mcs & 7]);
-	u32 t = sgi ? DIV_ROUND_UP((nsym * 18 + 4) / 5, 4) << 2 : nsym << 2;
-
-	return t + HT_PREAMBLE + HT_SIFS;
-}
-
 /*
  * Fill the NAV/duration fields the chip needs for this rate.  Returns the
  * ACK duration for the 802.11 Duration/ID field.
@@ -74,10 +62,7 @@ static u32 ssv6051_set_timing(struct ssv6051_dev *sd, struct ssv6051_tx_desc *d,
 	bool short_pre = sd->short_preamble;
 	u32 frame, ack = 0, nav = 0, consume = 0;
 
-	if (r->phy == SSV_PHY_HT)
-		frame = ssv6051_ht_airtime(r->dot11, len, drate >= SSV_RATE_MCS_SGI);
-	else
-		frame = ssv6051_legacy_airtime(r, len, short_pre);
+	frame = ssv6051_legacy_airtime(r, len, short_pre);
 
 	if (unicast)
 		ack = ssv6051_legacy_airtime(c, ACK_LEN, short_pre);
@@ -88,13 +73,6 @@ static u32 ssv6051_set_timing(struct ssv6051_dev *sd, struct ssv6051_tx_desc *d,
 
 	le32p_replace_bits(&d->w4, nav, TXD4_RTS_CTS_NAV);
 	le32p_replace_bits(&d->w4, (consume >> 5) + 1, TXD4_CONSUME_TIME);
-	if (r->phy == SSV_PHY_HT) {
-		u32 l = frame - HT_SIFS;
-
-		/* legacy L-SIG length spoofing the HT PPDU duration */
-		l = ((l - (6 + 20)) + 3) >> 2;
-		le32p_replace_bits(&d->w5, l + (l << 1) - 3, TXD5_DL_LENGTH);
-	}
 	return ack;
 }
 
@@ -325,19 +303,6 @@ static unsigned int ssv6051_queued_hw(struct ssv6051_dev *sd)
 	return n;
 }
 
-/* everything not yet handed to the chip, for flow control */
-static unsigned int ssv6051_queued(struct ssv6051_dev *sd)
-{
-	return ssv6051_queued_hw(sd) + atomic_read(&sd->agg_queued);
-}
-
-/* an aggregation queue has work (new frames, or a Block Ack came in) */
-void ssv6051_tx_kick(struct ssv6051_dev *sd)
-{
-	WRITE_ONCE(sd->agg_kick, true);
-	wake_up(&sd->tx_wait);
-}
-
 /* fallback if the room interrupt never comes */
 #define ROOM_WAIT_MS		4
 
@@ -350,17 +315,10 @@ static int ssv6051_tx_thread(void *data)
 		bool sent = false, blocked = false;
 		int q;
 
-		/* aggregates waiting for a Block Ack need a periodic look */
-		wait_event_freezable_timeout(sd->tx_wait,
-					     ssv6051_queued_hw(sd) || READ_ONCE(sd->agg_kick) ||
-					     kthread_should_stop(),
-					     msecs_to_jiffies(50));
+		wait_event_freezable(sd->tx_wait,
+				     ssv6051_queued_hw(sd) || kthread_should_stop());
 		if (kthread_should_stop())
 			break;
-		WRITE_ONCE(sd->agg_kick, false);
-
-		if (ssv6051_agg_pump(sd, &blocked))
-			sent = true;
 
 		/* management first, then VO, VI, BE, BK */
 		for (q = HW_TXQ_NUM - 1; q >= 0; q--) {
@@ -381,7 +339,7 @@ static int ssv6051_tx_thread(void *data)
 			}
 		}
 
-		if (sd->queues_stopped && ssv6051_queued(sd) < TXQ_WAKE_LEN) {
+		if (sd->queues_stopped && ssv6051_queued_hw(sd) < TXQ_WAKE_LEN) {
 			sd->queues_stopped = false;
 			ieee80211_wake_queues(sd->hw);
 		}
@@ -440,21 +398,16 @@ void ssv6051_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
 	else
 		hwq = ac_to_hwq[skb_get_queue_mapping(skb) & 3];
 
-	if (sta && ssv6051_agg_tx(sd, sta, skb)) {
-		ssv6051_tx_kick(sd);
-	} else {
-		info->flags &= ~IEEE80211_TX_CTL_AMPDU;
-		if (ap && hwq == HW_TXQ_MGMT)
-			ssv6051_ap_group_queued(sd);
-		if (!ssv6051_build_desc(sd, skb, sta, hwq)) {
-			ieee80211_free_txskb(hw, skb);
-			return;
-		}
-		skb_queue_tail(&sd->txq[hwq], skb);
-		wake_up(&sd->tx_wait);
+	if (ap && hwq == HW_TXQ_MGMT)
+		ssv6051_ap_group_queued(sd);
+	if (!ssv6051_build_desc(sd, skb, sta, hwq)) {
+		ieee80211_free_txskb(hw, skb);
+		return;
 	}
+	skb_queue_tail(&sd->txq[hwq], skb);
+	wake_up(&sd->tx_wait);
 
-	if (!sd->queues_stopped && ssv6051_queued(sd) >= TXQ_STOP_LEN) {
+	if (!sd->queues_stopped && ssv6051_queued_hw(sd) >= TXQ_STOP_LEN) {
 		sd->queues_stopped = true;
 		ieee80211_stop_queues(hw);
 	}
@@ -477,7 +430,6 @@ int ssv6051_tx_init(struct ssv6051_dev *sd)
 	for (q = 0; q < HW_TXQ_NUM; q++)
 		skb_queue_head_init(&sd->txq[q]);
 	init_waitqueue_head(&sd->tx_wait);
-	atomic_set(&sd->agg_queued, 0);
 	sd->tx_buf = devm_kmalloc(sd->dev, SSV_TX_BUF_SIZE + SDIO_BLOCK_SIZE, GFP_KERNEL);
 	if (!sd->tx_buf)
 		return -ENOMEM;

@@ -76,11 +76,6 @@ struct ssv6256_rx_aggr_hdr {
 	__le32 w2;
 } __packed;
 
-/*
- * Read a whole batch into sd->rx_buf and return its length.  The first
- * word at the data port announces how much is waiting; reading it does
- * not consume it, so the batch that follows still starts at its header.
- */
 /* Take a free batch buffer, or NULL if the thread is behind. */
 static struct ssv6256_batch *ssv6256_batch_get(struct ssv6256_dev *sd, struct list_head *from)
 {
@@ -97,7 +92,7 @@ static struct ssv6256_batch *ssv6256_batch_get(struct ssv6256_dev *sd, struct li
 }
 
 static void ssv6256_batch_put(struct ssv6256_dev *sd, struct list_head *to,
-			  struct ssv6256_batch *b)
+			      struct ssv6256_batch *b)
 {
 	unsigned long flags;
 
@@ -106,6 +101,11 @@ static void ssv6256_batch_put(struct ssv6256_dev *sd, struct list_head *to,
 	spin_unlock_irqrestore(&sd->rx_lock, flags);
 }
 
+/*
+ * Read a whole batch into a free buffer.  The first word at the data
+ * port announces how much is waiting; reading it does not consume it,
+ * so the batch that follows still starts at its header.
+ */
 static struct ssv6256_batch *ssv6256_read_batch(struct ssv6256_dev *sd)
 {
 	struct sdio_func *func = sd->func;
@@ -161,23 +161,12 @@ static void ssv6256_rx_rate(struct ieee80211_rx_status *rxs, u8 code)
 	/* the 2.4 GHz band lists the four CCK rates before the OFDM ones */
 	u8 ofdm_base = rxs->band == NL80211_BAND_2GHZ ? 4 : 0;
 
-	switch (FIELD_GET(RATE_PHY_MODE, code)) {
-	case RATE_PHY_HT:
-		rxs->encoding = RX_ENC_HT;
-		if (code & RATE_HT40)
-			rxs->bw = RATE_INFO_BW_40;
-		if (code & RATE_SHORT)
-			rxs->enc_flags |= RX_ENC_FLAG_SHORT_GI;
-		rxs->rate_idx = FIELD_GET(RATE_INDEX, code);
-		break;
-	case RATE_PHY_OFDM:
-		rxs->rate_idx = FIELD_GET(RATE_INDEX, code) + ofdm_base;
-		break;
-	default:
+	if (FIELD_GET(RATE_PHY_MODE, code) == RATE_PHY_CCK) {
 		if (code & RATE_SHORT)
 			rxs->enc_flags |= RX_ENC_FLAG_SHORTPRE;
 		rxs->rate_idx = FIELD_GET(RATE_INDEX, code) & 3;
-		break;
+	} else {
+		rxs->rate_idx = (FIELD_GET(RATE_INDEX, code) & 7) + ofdm_base;
 	}
 }
 
@@ -201,8 +190,6 @@ static void ssv6256_rx_frame(struct ssv6256_dev *sd, struct sk_buff *skb)
 	ssv6256_rx_rate(rxs, FIELD_GET(RXPHY0_RATE, w0));
 	rxs->freq = ieee80211_channel_to_frequency(sd->channel, rxs->band);
 	rxs->signal = -(int)le32_get_bits(phy->w1, RXPHY1_RSSI);
-	if (w0 & RXPHY0_AGGREGATE)
-		rxs->flag |= RX_FLAG_NO_SIGNAL_VAL;
 
 	skb_pull(skb, SSV_RX_DESC_LEN);
 	skb_trim(skb, skb->len - SSV_RX_PINFO_PAD);
@@ -226,9 +213,12 @@ static void ssv6256_rx_resync_work(struct work_struct *work)
 
 	if (!sd->started)
 		return;
-	dev_info(sd->dev, "receive out of step, setting the format again\n");
-	ssv6256_rx_aggr_init(sd);
+	dev_warn(sd->dev, "receive out of step, setting the format again\n");
+	mutex_lock(&sd->mutex);
+	if (sd->started)
+		ssv6256_rx_aggr_init(sd);
 	sd->rx_bogus = 0;
+	mutex_unlock(&sd->mutex);
 }
 
 static void ssv6256_rx_unmask_work(struct work_struct *work)
@@ -275,7 +265,6 @@ static int ssv6256_rx_split(struct ssv6256_dev *sd, const u8 *batch, size_t len)
 		const struct ssv6256_rx_aggr_hdr *h;
 		struct sk_buff *skb;
 		size_t jmp, flen;
-		u64 a = ktime_get_ns(), b;
 
 		h = (const struct ssv6256_rx_aggr_hdr *)(batch + off);
 		jmp = le16_to_cpu(h->jmp_len);
@@ -289,11 +278,7 @@ static int ssv6256_rx_split(struct ssv6256_dev *sd, const u8 *batch, size_t len)
 		if (!skb)
 			break;
 		skb_put_data(skb, batch + off + hdr, flen);
-		b = ktime_get_ns();
 		ssv6256_rx_dispatch(sd, skb);
-		sd->dbg_copy += b - a;
-		sd->dbg_disp += ktime_get_ns() - b;
-		sd->dbg_frames++;
 		off += jmp;
 		n++;
 	}
@@ -375,7 +360,6 @@ void ssv6256_rx_irq(struct ssv6256_dev *sd)
 			break;
 
 		if (sd->rx_aggr) {
-			u64 t0 = ktime_get_ns(), t1;
 			struct ssv6256_batch *batch = ssv6256_read_batch(sd);
 
 			if (IS_ERR(batch)) {
@@ -384,11 +368,9 @@ void ssv6256_rx_irq(struct ssv6256_dev *sd)
 				 * Leave the loop and let it catch up; the chip
 				 * keeps the frames and asks again.
 				 */
-				sd->rx_dropped++;
 				wake_up(&sd->rx_wait);
 				break;
 			}
-			t1 = ktime_get_ns();
 			len = batch ? batch->len : 0;
 			if (len) {
 				/*
@@ -400,23 +382,6 @@ void ssv6256_rx_irq(struct ssv6256_dev *sd)
 				n++;
 				ssv6256_batch_put(sd, &sd->rx_ready, batch);
 				wake_up(&sd->rx_wait);
-			}
-			sd->dbg_read += t1 - t0;
-			sd->dbg_proc += ktime_get_ns() - t1;
-			sd->dbg_bytes += len;
-			if (++sd->dbg_batches == 512) {
-				dev_info(sd->dev,
-					 "DBG 512 lotes, %u quadros: ler %llu us, copiar %llu us, entregar %llu us, %u bytes\n",
-					 sd->dbg_frames, div_u64(sd->dbg_read, 1000),
-					 div_u64(sd->dbg_copy, 1000),
-					 div_u64(sd->dbg_disp, 1000), sd->dbg_bytes);
-				sd->dbg_read = 0;
-				sd->dbg_proc = 0;
-				sd->dbg_copy = 0;
-				sd->dbg_disp = 0;
-				sd->dbg_bytes = 0;
-				sd->dbg_batches = 0;
-				sd->dbg_frames = 0;
 			}
 			skb = NULL;
 		} else {

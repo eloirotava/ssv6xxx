@@ -2,7 +2,7 @@
 obj-$(CONFIG_SSV6XXX) += ssv6xxx.o
 ssv6xxx-y := main.o
 ssv6xxx-y += ssv6051/sdio.o ssv6051/hw.o ssv6051/mac.o ssv6051/tx.o \
-	     ssv6051/rx.o ssv6051/rc.o ssv6051/ampdu.o ssv6051/ap.o
+	     ssv6051/rx.o ssv6051/rc.o ssv6051/ap.o
 ssv6xxx-y += ssv6256/sdio.o ssv6256/hw.o ssv6256/mac.o ssv6256/tx.o \
 	     ssv6256/rx.o ssv6256/phy.o ssv6256/ap.o
 

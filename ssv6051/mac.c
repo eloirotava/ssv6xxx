@@ -169,14 +169,11 @@ static int ssv6051_sta_add(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		return -ENOSPC;
 	}
 	ss->wsid = wsid;
-	ssv6051_agg_init(ss);
 	spin_lock_bh(&sd->sta_lock);
 	ssv6051_rc_init(sd, sta);
 	spin_unlock_bh(&sd->sta_lock);
 	ssv6051_wsid_add(sd, wsid, sta->addr);
-	mutex_lock(&sd->agg_mutex);
 	rcu_assign_pointer(sd->sta[wsid], sta);
-	mutex_unlock(&sd->agg_mutex);
 	mutex_unlock(&sd->mutex);
 	return 0;
 }
@@ -186,25 +183,16 @@ static int ssv6051_sta_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif
 {
 	struct ssv6051_dev *sd = hw->priv;
 	struct ssv6051_sta *ss = (struct ssv6051_sta *)sta->drv_priv;
-	int tid;
 
 	mutex_lock(&sd->mutex);
-	if (sd->rx_ba_sta == sta) {
-		ssv6051_rx_ba_session(sd, NULL, 0, 0);
-		sd->rx_ba_sta = NULL;
-	}
 	if (ss->wsid >= 0 && ss->wsid < SSV_NUM_STA &&
 	    rcu_access_pointer(sd->sta[ss->wsid]) == sta) {
-		mutex_lock(&sd->agg_mutex);
 		RCU_INIT_POINTER(sd->sta[ss->wsid], NULL);
-		mutex_unlock(&sd->agg_mutex);
 		ssv6051_wsid_del(sd, ss->wsid, sta->addr);
 	}
 	ss->wsid = -1;
 	mutex_unlock(&sd->mutex);
 	synchronize_rcu();
-	for (tid = 0; tid < SSV_AGG_TIDS; tid++)
-		ssv6051_agg_flush(sd, ss, tid);
 	return 0;
 }
 
@@ -259,38 +247,6 @@ static void ssv6051_sw_scan_complete(struct ieee80211_hw *hw, struct ieee80211_v
 	mutex_unlock(&sd->mutex);
 }
 
-static int ssv6051_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-				struct ieee80211_ampdu_params *params)
-{
-	struct ssv6051_dev *sd = hw->priv;
-	int ret = 0;
-
-	mutex_lock(&sd->mutex);
-	switch (params->action) {
-	case IEEE80211_AMPDU_RX_START:
-		/* the MAC tracks a single RX Block Ack session */
-		if (sd->rx_ba_sta && (sd->rx_ba_sta != params->sta ||
-				      sd->rx_ba_tid != params->tid)) {
-			ret = -EBUSY;
-			break;
-		}
-		sd->rx_ba_sta = params->sta;
-		sd->rx_ba_tid = params->tid;
-		ssv6051_rx_ba_session(sd, params->sta->addr, params->tid, params->ssn);
-		break;
-	case IEEE80211_AMPDU_RX_STOP:
-		if (sd->rx_ba_sta == params->sta && sd->rx_ba_tid == params->tid) {
-			ssv6051_rx_ba_session(sd, NULL, 0, 0);
-			sd->rx_ba_sta = NULL;
-		}
-		break;
-	default:
-		ret = ssv6051_agg_action(sd, vif, params);
-	}
-	mutex_unlock(&sd->mutex);
-	return ret;
-}
-
 /* The TX path reads wiphy->rts_threshold directly. */
 static int ssv6051_set_rts_threshold(struct ieee80211_hw *hw, int radio_idx, u32 value)
 {
@@ -315,7 +271,6 @@ static const struct ieee80211_ops ssv6051_ops = {
 	.set_tim = ssv6051_set_tim,
 	.conf_tx = ssv6051_conf_tx,
 	.set_rts_threshold = ssv6051_set_rts_threshold,
-	.ampdu_action = ssv6051_ampdu_action,
 	.sw_scan_start = ssv6051_sw_scan_start,
 	.sw_scan_complete = ssv6051_sw_scan_complete,
 };
@@ -332,7 +287,6 @@ struct ssv6051_dev *ssv6051_mac_alloc(struct device *dev)
 	sd->hw = hw;
 	sd->dev = dev;
 	mutex_init(&sd->mutex);
-	mutex_init(&sd->agg_mutex);
 	ssv6051_ap_init(sd);
 	spin_lock_init(&sd->sta_lock);
 	init_waitqueue_head(&sd->cali_wait);
@@ -348,15 +302,12 @@ void ssv6051_mac_free(struct ssv6051_dev *sd)
 int ssv6051_mac_register(struct ssv6051_dev *sd)
 {
 	struct ieee80211_hw *hw = sd->hw;
-	struct ieee80211_sta_ht_cap *ht = &sd->band.ht_cap;
 	int ret;
 
 	ieee80211_hw_set(hw, SIGNAL_DBM);
 	ieee80211_hw_set(hw, HAS_RATE_CONTROL);
 	ieee80211_hw_set(hw, MFP_CAPABLE);
-	ieee80211_hw_set(hw, AMPDU_AGGREGATION);
 	ieee80211_hw_set(hw, REPORTS_TX_ACK_STATUS);
-	hw->max_rx_aggregation_subframes = 16;
 	hw->queues = IEEE80211_NUM_ACS;
 	hw->extra_tx_headroom = SSV_TX_DESC_LEN;
 	hw->max_rates = 1;
@@ -370,17 +321,6 @@ int ssv6051_mac_register(struct ssv6051_dev *sd)
 	sd->band.n_channels = ARRAY_SIZE(ssv6051_channels);
 	sd->band.bitrates = ssv6051_bitrates;
 	sd->band.n_bitrates = ARRAY_SIZE(ssv6051_bitrates);
-	/*
-	 * 1x1, 20 MHz only.  The datasheet lists RX STBC, but with it the AP
-	 * sends STBC and downstream throughput drops by about a third.
-	 */
-	ht->ht_supported = true;
-	ht->cap = IEEE80211_HT_CAP_SGI_20 | IEEE80211_HT_CAP_SM_PS;
-	ht->ampdu_factor = IEEE80211_HT_MAX_AMPDU_32K;
-	ht->ampdu_density = IEEE80211_HT_MPDU_DENSITY_8;
-	ht->mcs.rx_mask[0] = 0xff;
-	ht->mcs.rx_highest = cpu_to_le16(72);
-	ht->mcs.tx_params = IEEE80211_HT_MCS_TX_DEFINED;
 	hw->wiphy->bands[NL80211_BAND_2GHZ] = &sd->band;
 
 	SET_IEEE80211_PERM_ADDR(hw, sd->mac);

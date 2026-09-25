@@ -35,52 +35,23 @@ const struct ssv6051_rate ssv6051_rates[SSV_NUM_RATES] = {
 	{ 36000, SSV_PHY_OFDM, 11, 9 },
 	{ 48000, SSV_PHY_OFDM, 11, 10 },
 	{ 54000, SSV_PHY_OFDM, 11, 11 },
-	/* HT20 MCS0..7, long GI */
-	{ 6500, SSV_PHY_HT, 7, 0 },
-	{ 13000, SSV_PHY_HT, 9, 1 },
-	{ 19500, SSV_PHY_HT, 9, 2 },
-	{ 26000, SSV_PHY_HT, 11, 3 },
-	{ 39000, SSV_PHY_HT, 11, 4 },
-	{ 52000, SSV_PHY_HT, 11, 5 },
-	{ 58500, SSV_PHY_HT, 11, 6 },
-	{ 65000, SSV_PHY_HT, 11, 7 },
-	/* HT20 MCS0..7, short GI */
-	{ 7200, SSV_PHY_HT, 7, 0 },
-	{ 14400, SSV_PHY_HT, 9, 1 },
-	{ 21700, SSV_PHY_HT, 9, 2 },
-	{ 28900, SSV_PHY_HT, 11, 3 },
-	{ 43300, SSV_PHY_HT, 11, 4 },
-	{ 57800, SSV_PHY_HT, 11, 5 },
-	{ 65000, SSV_PHY_HT, 11, 6 },
-	{ 72200, SSV_PHY_HT, 11, 7 },
 };
 
 void ssv6051_rc_init(struct ssv6051_dev *sd, struct ieee80211_sta *sta)
 {
 	struct ssv6051_sta *ss = (struct ssv6051_sta *)sta->drv_priv;
 	struct ssv6051_rc *rc = &ss->rc;
-	const struct ieee80211_sta_ht_cap *ht = &sta->deflink.ht_cap;
+	static const u8 order[] = { 0, 1, 2, 4, 5, 3, 6, 7, 8, 9, 10, 11 };
 	u32 legacy = sta->deflink.supp_rates[NL80211_BAND_2GHZ];
 	int i;
 
 	memset(rc, 0, sizeof(*rc));
-	if (ht->ht_supported && (ht->mcs.rx_mask[0] & 1)) {
-		u8 base = (ht->cap & IEEE80211_HT_CAP_SGI_20) ?
-			  SSV_RATE_MCS_SGI : SSV_RATE_MCS_LGI;
+	/* ascending speed: 1, 2, 5.5, 6, 9, 11, 12 .. 54 */
+	for (i = 0; i < ARRAY_SIZE(order); i++) {
+		int b = order[i];
 
-		for (i = 0; i < 8; i++)
-			if (ht->mcs.rx_mask[0] & BIT(i))
-				rc->rate[rc->n++] = base + i;
-	} else {
-		/* ascending speed: 1, 2, 5.5, 6, 9, 11, 12 .. 54 */
-		static const u8 order[] = { 0, 1, 2, 4, 5, 3, 6, 7, 8, 9, 10, 11 };
-
-		for (i = 0; i < ARRAY_SIZE(order); i++) {
-			int b = order[i];
-
-			if (legacy & BIT(b))
-				rc->rate[rc->n++] = b < 4 ? b : SSV_RATE_OFDM + b - 4;
-		}
+		if (legacy & BIT(b))
+			rc->rate[rc->n++] = b < 4 ? b : SSV_RATE_OFDM + b - 4;
 	}
 	if (!rc->n)
 		rc->rate[rc->n++] = 0;
@@ -142,7 +113,7 @@ static void ssv6051_rc_select(struct ssv6051_rc *rc)
 
 /*
  * The firmware accumulates, per station, the frames sent since the last
- * report (ampdu_len), how many were acknowledged (ampdu_ack_len) and the
+ * report (frames), how many were acknowledged (acked) and the
  * transmissions it took at the reported rate (count), and reports when a
  * frame asking for it completes.  The driver keeps the rate constant for a
  * whole window, so the numbers belong to that rate.
@@ -150,7 +121,7 @@ static void ssv6051_rc_select(struct ssv6051_rc *rc)
 void ssv6051_rc_report(struct ssv6051_dev *sd, const struct ssv6051_rc_report *rpt)
 {
 	struct ieee80211_sta *sta;
-	u32 acked = le16_to_cpu(rpt->ampdu_ack_len);
+	u32 acked = le16_to_cpu(rpt->acked);
 	u32 count = rpt->rates[0].count;
 	int rate = rpt->rates[0].data_rate;
 	struct ssv6051_rc *rc;
@@ -182,60 +153,11 @@ void ssv6051_rc_report(struct ssv6051_dev *sd, const struct ssv6051_rc_report *r
 		rc->sampled[i] = true;
 		ssv6051_rc_select(rc);
 		dev_dbg(sd->dev, "rc: rate %u %u/%u/%u -> p %u, cur %u (rate %u)\n",
-			r, acked, le16_to_cpu(rpt->ampdu_len), count,
+			r, acked, le16_to_cpu(rpt->frames), count,
 			rc->prob[i], rc->cur, rc->rate[rc->cur]);
 		break;
 	}
 	spin_unlock_bh(&sd->sta_lock);
 out:
 	rcu_read_unlock();
-}
-
-/*
- * Rate chain for an aggregate: the current rate and two below it (the
- * chip falls back along the chain).  Every RC_PROBE_EVERY-th aggregate
- * starts one step up or down instead.  Only for HT peers.
- */
-bool ssv6051_rc_agg_chain(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 *chain)
-{
-	struct ssv6051_rc *rc = &ss->rc;
-	int top, i;
-
-	if (!rc->n || rc->rate[0] < SSV_RATE_MCS_LGI)
-		return false;
-	rc->agg_count++;
-	top = rc->cur;
-	if (rc->agg_count % RC_PROBE_EVERY == 0) {
-		if ((rc->agg_count / RC_PROBE_EVERY) & 1)
-			top = min_t(int, top + 1, rc->n - 1);
-		else
-			top = max_t(int, top - 1, 0);
-	}
-	for (i = 0; i < SSV_TX_MAX_RATES; i++)
-		chain[i] = rc->rate[max_t(int, top - i, 0)];
-	return true;
-}
-
-/*
- * Aggregate outcome: @acked of @frames MPDUs got through; @tries is the
- * number of attempts the chip made at the first rate.
- */
-void ssv6051_rc_agg_result(struct ssv6051_dev *sd, struct ssv6051_sta *ss, u8 rate,
-			   int frames, int acked, int tries)
-{
-	struct ssv6051_rc *rc = &ss->rc;
-	u32 p;
-	int i;
-
-	if (!frames)
-		return;
-	for (i = 0; i < rc->n; i++) {
-		if (rc->rate[i] != rate)
-			continue;
-		p = min(acked, frames) * RC_SCALE / (frames * max(tries, 1));
-		rc->prob[i] = rc->sampled[i] ? (rc->prob[i] * 3 + p) / 4 : p;
-		rc->sampled[i] = true;
-		ssv6051_rc_select(rc);
-		break;
-	}
 }

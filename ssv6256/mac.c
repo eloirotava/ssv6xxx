@@ -2,6 +2,7 @@
 /*
  * SSV6256 mac80211 glue: capabilities and callbacks.
  */
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/etherdevice.h>
 
@@ -75,6 +76,8 @@ static void ssv6256_stop(struct ieee80211_hw *hw, bool suspend)
 	ssv6256_phy_enable(sd, false);
 	ssv6256_tx_flush(sd);
 	mutex_unlock(&sd->mutex);
+	/* the resync work checks started under the mutex: a no-op by now */
+	cancel_work_sync(&sd->rx_resync_work);
 }
 
 static int ssv6256_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
@@ -98,7 +101,7 @@ static int ssv6256_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *
 }
 
 static void ssv6256_remove_interface(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif)
+				     struct ieee80211_vif *vif)
 {
 	struct ssv6256_dev *sd = hw->priv;
 
@@ -113,32 +116,20 @@ static void ssv6256_remove_interface(struct ieee80211_hw *hw,
 	mutex_unlock(&sd->mutex);
 }
 
-static enum ssv6256_bandwidth ssv6256_chandef_bw(const struct cfg80211_chan_def *def)
-{
-	if (def->width != NL80211_CHAN_WIDTH_40)
-		return SSV_BW_20;
-	return def->center_freq1 > def->chan->center_freq ? SSV_BW_40_ABOVE :
-							    SSV_BW_40_BELOW;
-}
-
 static int ssv6256_config(struct ieee80211_hw *hw, int radio_idx, u32 changed)
 {
 	struct ssv6256_dev *sd = hw->priv;
 	struct ieee80211_channel *chan = hw->conf.chandef.chan;
-	enum ssv6256_bandwidth bw;
 	int ret = 0;
 
 	if (!(changed & IEEE80211_CONF_CHANGE_CHANNEL) || !chan)
 		return 0;
-	bw = ssv6256_chandef_bw(&hw->conf.chandef);
 
 	mutex_lock(&sd->mutex);
-	if (chan->hw_value != sd->channel || bw != sd->bw) {
-		ret = ssv6256_set_channel(sd, chan->hw_value, bw);
-		if (!ret) {
+	if (chan->hw_value != sd->channel) {
+		ret = ssv6256_set_channel(sd, chan->hw_value);
+		if (!ret)
 			sd->channel = chan->hw_value;
-			sd->bw = bw;
-		}
 	}
 	mutex_unlock(&sd->mutex);
 	return ret;
@@ -147,13 +138,13 @@ static int ssv6256_config(struct ieee80211_hw *hw, int radio_idx, u32 changed)
 #define SSV_FILTERS (FIF_ALLMULTI | FIF_BCN_PRBRESP_PROMISC | FIF_PSPOLL)
 
 static void ssv6256_configure_filter(struct ieee80211_hw *hw, unsigned int changed,
-				 unsigned int *total, u64 multicast)
+				     unsigned int *total, u64 multicast)
 {
 	*total &= SSV_FILTERS;
 }
 
 static void ssv6256_bss_info_changed(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif,
+				     struct ieee80211_vif *vif,
 				 struct ieee80211_bss_conf *info, u64 changed)
 {
 	struct ssv6256_dev *sd = hw->priv;
@@ -175,7 +166,7 @@ static void ssv6256_bss_info_changed(struct ieee80211_hw *hw,
 
 /* A station's power save buffer changed: the beacon TIM follows. */
 static int ssv6256_set_tim(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
-		       bool set)
+			   bool set)
 {
 	struct ssv6256_dev *sd = hw->priv;
 
@@ -185,7 +176,7 @@ static int ssv6256_set_tim(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
 
 /* Channel access parameters of one access category. */
 static int ssv6256_conf_tx(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		       unsigned int link_id, u16 ac,
+			   unsigned int link_id, u16 ac,
 		       const struct ieee80211_tx_queue_params *params)
 {
 	struct ssv6256_dev *sd = hw->priv;
@@ -234,7 +225,7 @@ static void ssv6256_sta_del(struct ssv6256_dev *sd, struct ieee80211_sta *sta)
 }
 
 static int ssv6256_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			 struct ieee80211_sta *sta, enum ieee80211_sta_state old,
+			     struct ieee80211_sta *sta, enum ieee80211_sta_state old,
 			 enum ieee80211_sta_state new)
 {
 	struct ssv6256_dev *sd = hw->priv;
@@ -249,27 +240,9 @@ static int ssv6256_sta_state(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	return ret;
 }
 
-/*
- * Receiving aggregates needs nothing from the driver: the MAC answers
- * the Block Ack requests and hands the subframes over one by one, and
- * mac80211 puts them back in order.  Sending them is not done here:
- * the chip needs more hand holding than it is worth so far.
- */
-static int ssv6256_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-			    struct ieee80211_ampdu_params *params)
-{
-	switch (params->action) {
-	case IEEE80211_AMPDU_RX_START:
-	case IEEE80211_AMPDU_RX_STOP:
-		return 0;
-	default:
-		return -EOPNOTSUPP;
-	}
-}
-
 /* Wait for what is queued to reach the chip, before a channel change. */
 static void ssv6256_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-		      u32 queues, bool drop)
+			  u32 queues, bool drop)
 {
 	struct ssv6256_dev *sd = hw->priv;
 	int i;
@@ -300,7 +273,6 @@ static const struct ieee80211_ops ssv6256_ops = {
 	.set_tim = ssv6256_set_tim,
 	.conf_tx = ssv6256_conf_tx,
 	.flush = ssv6256_flush,
-	.ampdu_action = ssv6256_ampdu_action,
 };
 
 struct ssv6256_dev *ssv6256_mac_alloc(struct device *dev)
@@ -334,15 +306,11 @@ void ssv6256_mac_free(struct ssv6256_dev *sd)
 int ssv6256_mac_register(struct ssv6256_dev *sd)
 {
 	struct ieee80211_hw *hw = sd->hw;
-	struct ieee80211_sta_ht_cap *ht = &sd->band.ht_cap;
 	int ret;
 
 	ieee80211_hw_set(hw, SIGNAL_DBM);
 	ieee80211_hw_set(hw, MFP_CAPABLE);
 	ieee80211_hw_set(hw, REPORTS_TX_ACK_STATUS);
-	ieee80211_hw_set(hw, AMPDU_AGGREGATION);
-	ieee80211_hw_set(hw, SUPPORTS_REORDERING_BUFFER);
-	hw->max_rx_aggregation_subframes = 32;
 	hw->queues = IEEE80211_NUM_ACS;
 	hw->extra_tx_headroom = SSV_TX_DESC_LEN;
 	hw->max_rates = SSV_TX_MAX_RATES;
@@ -368,30 +336,9 @@ int ssv6256_mac_register(struct ssv6256_dev *sd)
 		sd->band5.n_bitrates = ARRAY_SIZE(ssv6256_bitrates) - 4;
 	}
 
-	/* the 5 GHz band has no CCK rates: it starts at 6 Mbit/s */
-	if (sd->dual_band) {
-		sd->band5.band = NL80211_BAND_5GHZ;
-		sd->band5.channels = ssv6256_channels_5g;
-		sd->band5.n_channels = ARRAY_SIZE(ssv6256_channels_5g);
-		sd->band5.bitrates = &ssv6256_bitrates[4];
-		sd->band5.n_bitrates = ARRAY_SIZE(ssv6256_bitrates) - 4;
-	}
-
-	/* one spatial stream, 20 or 40 MHz */
-	ht->ht_supported = true;
-	ht->cap = IEEE80211_HT_CAP_SGI_20 | IEEE80211_HT_CAP_SGI_40 |
-		  IEEE80211_HT_CAP_SUP_WIDTH_20_40 |
-		  IEEE80211_HT_CAP_DSSSCCK40 | IEEE80211_HT_CAP_SM_PS;
-	ht->ampdu_factor = IEEE80211_HT_MAX_AMPDU_32K;
-	ht->ampdu_density = IEEE80211_HT_MPDU_DENSITY_8;
-	ht->mcs.rx_mask[0] = 0xff;
-	ht->mcs.rx_highest = cpu_to_le16(150);
-	ht->mcs.tx_params = IEEE80211_HT_MCS_TX_DEFINED;
 	hw->wiphy->bands[NL80211_BAND_2GHZ] = &sd->band;
-	if (sd->dual_band) {
-		sd->band5.ht_cap = sd->band.ht_cap;
+	if (sd->dual_band)
 		hw->wiphy->bands[NL80211_BAND_5GHZ] = &sd->band5;
-	}
 
 	SET_IEEE80211_PERM_ADDR(hw, sd->mac);
 

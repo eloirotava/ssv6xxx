@@ -497,7 +497,7 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 	ssv6051_reg_write(sd, ADR_RX_FLOW_DATA, M_ENG_MACRX | (M_ENG_ENCRYPT_SEC << 4) |
 		      (M_ENG_HWHCI << 8));
 	ssv6051_reg_write(sd, ADR_RX_FLOW_MNG, M_ENG_MACRX | (M_ENG_HWHCI << 4));
-	/* control frames (Block Ack) pass the MCU, which tracks aggregates */
+	/* control frames pass the MCU, as in the vendor driver */
 	ssv6051_reg_write(sd, ADR_RX_FLOW_CTRL, M_ENG_MACRX | (M_ENG_CPU << 4) |
 		      (M_ENG_HWHCI << 8));
 	ssv6051_reg_set_bits(sd, ADR_SCRT_SET, 1 << SCRT_RPLY_IGNORE_SFT,
@@ -519,9 +519,6 @@ static int ssv6051_init_mac(struct ssv6051_dev *sd)
 	ssv6051_reg_read(sd, ADR_TX_SEG, &val);
 	dev_info(sd->dev, "firmware running (version %u)\n", val);
 	ssv6051_reg_set_bits(sd, ADR_PHY_EN_1, RG_PHY_MD_EN_MSK, RG_PHY_MD_EN_MSK);
-	/* the MAC computes the FCS of each MPDU inside an aggregate */
-	ssv6051_reg_set_bits(sd, ADR_MTX_MISC_EN, BIT(MTX_AMPDU_CRC_AUTO_SFT),
-			     BIT(MTX_AMPDU_CRC_AUTO_SFT));
 	return ssv6051_send_cmd(sd, SSV_CMD_WATCHDOG_START, NULL, 0);
 }
 
@@ -536,7 +533,6 @@ int ssv6051_hw_start(struct ssv6051_dev *sd)
 	/* MAC counters: they tell whether a frame got an ACK (tx.c) */
 	ssv6051_reg_write(sd, ADR_MIB_EN, 0);
 	ssv6051_reg_write(sd, ADR_MIB_EN, 0xffffffff);
-	sd->rx_ba_sta = NULL;
 	/* a fresh chip has no beacon buffers */
 	memset(sd->bcn_buf, 0, sizeof(sd->bcn_buf));
 	memset(sd->bcn_len, 0, sizeof(sd->bcn_len));
@@ -764,20 +760,4 @@ void ssv6051_scan_cca(struct ssv6051_dev *sd, bool scanning)
 		ssv6051_reg_write(sd, ADR_RX_11B_CCA_CONTROL, sd->cca_control);
 		ssv6051_reg_write(sd, ADR_RX_11B_CCA_1, sd->cca_1);
 	}
-}
-
-/* The MAC answers aggregates with Block Ack for one (TA, TID) at a time. */
-void ssv6051_rx_ba_session(struct ssv6051_dev *sd, const u8 *ta, u16 tid, u16 ssn)
-{
-	if (!ta) {
-		ssv6051_reg_write(sd, ADR_BA_CTRL, 0);
-		return;
-	}
-	ssv6051_reg_write(sd, ADR_BA_TA_0, get_unaligned_le32(ta));
-	ssv6051_reg_write(sd, ADR_BA_TA_1, get_unaligned_le16(ta + 4));
-	ssv6051_reg_write(sd, ADR_BA_TID, tid);
-	ssv6051_reg_write(sd, ADR_BA_ST_SEQ, ssn);
-	ssv6051_reg_write(sd, ADR_BA_SB0, 0);
-	ssv6051_reg_write(sd, ADR_BA_SB1, 0);
-	ssv6051_reg_write(sd, ADR_BA_CTRL, 0xb);
 }
