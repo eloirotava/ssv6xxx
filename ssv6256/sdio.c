@@ -33,7 +33,7 @@
  * needs DMA-safe buffers, hence the per-device scratch buffer; every
  * user holds the SDIO host.
  */
-int ssv6256_reg_read(struct ssv6256_dev *sd, u32 addr, u32 *val)
+static int __ssv6256_reg_read(struct ssv6256_dev *sd, u32 addr, u32 *val)
 {
 	struct sdio_func *func = sd->func;
 	int ret;
@@ -45,12 +45,20 @@ int ssv6256_reg_read(struct ssv6256_dev *sd, u32 addr, u32 *val)
 		ret = sdio_memcpy_fromio(func, sd->io_buf, sd->reg_port, 4);
 	sdio_release_host(func);
 	if (ret) {
-		dev_err_ratelimited(sd->dev, "read 0x%08x failed: %d\n", addr, ret);
 		*val = 0xffffffff;
 		return ret;
 	}
 	*val = get_unaligned_le32(sd->io_buf);
 	return 0;
+}
+
+int ssv6256_reg_read(struct ssv6256_dev *sd, u32 addr, u32 *val)
+{
+	int ret = __ssv6256_reg_read(sd, addr, val);
+
+	if (ret)
+		dev_err_ratelimited(sd->dev, "read 0x%08x failed: %d\n", addr, ret);
+	return ret;
 }
 
 int ssv6256_reg_write(struct ssv6256_dev *sd, u32 addr, u32 val)
@@ -162,7 +170,8 @@ void ssv6256_set_bus_clock(struct ssv6256_dev *sd, u32 hz)
 
 /*
  * The chip identity is an ASCII string held big-endian in four registers,
- * the last register first, and padded with spaces.
+ * the last register first, and padded with spaces.  Read quietly: on an
+ * SSV6051 the read fails, and that only means the card is not ours.
  */
 static int ssv6256_read_chip_id(struct ssv6256_dev *sd)
 {
@@ -170,7 +179,7 @@ static int ssv6256_read_chip_id(struct ssv6256_dev *sd)
 	int i, ret;
 
 	for (i = 0; i < 4; i++) {
-		ret = ssv6256_reg_read(sd, ADR_CHIP_ID_3 - i * 4, &val);
+		ret = __ssv6256_reg_read(sd, ADR_CHIP_ID_3 - i * 4, &val);
 		if (ret)
 			return ret;
 		put_unaligned_be32(val, sd->chip_id + i * 4);
@@ -393,10 +402,6 @@ static int ssv6256_sdio_probe(struct sdio_func *func)
 	}
 	ssv6256_pmu_wakeup(sd);
 
-	/*
-	 * The SSV6051 has no identity registers there and fails the read,
-	 * which only means the card is not ours.
-	 */
 	ret = ssv6256_read_chip_id(sd);
 	if (ret) {
 		ret = -ENODEV;

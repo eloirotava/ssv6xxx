@@ -24,7 +24,8 @@ evita o conflito que havia com dois módulos disputando o mesmo aparelho.
 - **plataformas:** 32 e 64 bits, independente de endianness;
 - **configuração:** device tree, sem arquivo `.cfg` nem parâmetros;
 - **estilo:** passa no `checkpatch.pl --strict`;
-- **testado em:** kernel 6.18 (Armbian) em RK322x e S905X.
+- **testado em:** kernel 6.18 (Armbian) em RK322x e S905X, e kernel 7.2
+  (Armbian) em S805 (MXQ, `meson-mx-sdio`).
 
 ## Arquivos
 
@@ -84,6 +85,10 @@ chip não aceita o formato, o driver volta a ler um quadro por vez.
 - Sem power save 802.11.
 - Só legacy: até 54 Mbit/s, 20 MHz, sem 802.11n (veja acima o porquê).
 - SSV6051: confirmação real de envio só para gerência e EAPOL.
+- No S805 o controlador SDIO do mainline (`meson-mx-sdio`) não tem
+  interrupção SDIO: o kernel consulta o chip por polling, o que limita a
+  vazão. O firmware é gravado em pedaços que cabem num comando só do
+  host, porque esse controlador aceita no máximo 256 blocos por comando.
 - Partes do código e as tabelas vêm do driver do fabricante, cujos
   cabeçalhos citam GPL versão 3 ou posterior; para o kernel oficial isso
   precisaria ser esclarecido com a iComm.
