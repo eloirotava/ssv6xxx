@@ -168,21 +168,37 @@ static void ssv6051_bus_slow(struct ssv6051_dev *sd)
 	ssv6051_set_bus_clock(sd, min(sd->bus_clock, SDIO_CLOCK_INIT));
 }
 
+/*
+ * The MMC core splits a transfer bigger than the host takes in one command
+ * and moves the SDIO address on for the rest, which here would land past
+ * the data port.  So write in pieces the host sends whole, each one
+ * starting at its own SRAM address.
+ */
 static int ssv6051_write_sram(struct ssv6051_dev *sd, u32 addr, const u8 *data, u32 len)
 {
 	struct sdio_func *func = sd->func;
-	int ret;
+	struct mmc_host *host = func->card->host;
+	u32 max = min(host->max_blk_count * func->cur_blksize, host->max_req_size);
+	int ret = 0;
 
-	ret = ssv6051_reg_write(sd, 0xc0000860, addr);
-	if (ret)
-		return ret;
-	sdio_claim_host(func);
-	sdio_writeb(func, 0x2, SDIO_REG_FN1_STATUS, &ret);
-	if (!ret)
-		ret = sdio_memcpy_toio(func, sd->data_port, (void *)data, len);
-	if (!ret)
-		sdio_writeb(func, 0, SDIO_REG_FN1_STATUS, &ret);
-	sdio_release_host(func);
+	max = rounddown(max, func->cur_blksize);
+	while (len && !ret) {
+		u32 piece = min(len, max);
+
+		ret = ssv6051_reg_write(sd, 0xc0000860, addr);
+		if (ret)
+			break;
+		sdio_claim_host(func);
+		sdio_writeb(func, 0x2, SDIO_REG_FN1_STATUS, &ret);
+		if (!ret)
+			ret = sdio_memcpy_toio(func, sd->data_port, (void *)data, piece);
+		if (!ret)
+			sdio_writeb(func, 0, SDIO_REG_FN1_STATUS, &ret);
+		sdio_release_host(func);
+		addr += piece;
+		data += piece;
+		len -= piece;
+	}
 	return ret;
 }
 
